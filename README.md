@@ -1,5 +1,5 @@
 # Public ~~RBQ~~ Osu!IRC bot message transfer plugin
-This Sync plugin allow you transfer your message between LiveRoom/SyncPlugin and you.<br/> It need a API key in my website for authoriztion.
+This Sync plugin able to transfer your message between LiveRoom/SyncPlugin and you.<br/> It need a [API key](http://mikirasora.moe/account/api) for authoriztion.
 
 ### Principle/Implement
 
