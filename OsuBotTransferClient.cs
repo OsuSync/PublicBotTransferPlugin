@@ -62,6 +62,18 @@ namespace PublicOsuBotTransfer
             if (web_socket != null)
                 return;
 
+            if (string.IsNullOrWhiteSpace(API_Key))
+            {
+                IO.CurrentIO.WriteColor($"[OsuBotTransferClient]未钦定配置选项API_Key，请去http://mikirasora.moe/account/api获取Api key并去config.ini填写.", ConsoleColor.Red);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(Target_User_Name))
+            {
+                IO.CurrentIO.WriteColor($"[OsuBotTransferClient]未钦定配置选项Target_User_Name，请去config.ini配置.", ConsoleColor.Red);
+                return;
+            }
+
             web_socket = new WebSocket(CONNECT_PATH);
             web_socket.OnClose += Web_socket_OnClose;
             web_socket.OnError += Web_socket_OnError;
