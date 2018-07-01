@@ -12,3 +12,9 @@ Name|Value Type|Default Value|Decription
 ---|---|---|---
 Target_User_Name|string||User name which you want bot to transfer to|
 API_Key|string||API Key for connect authoriztion ([Apply for api](http://mikirasora.moe/account/api))|
+
+### Usage
+[Video Tutorial](https://puu.sh/AOACO/056147cb4a.mp4)
+
+### Screenshot
+![](https://puu.sh/AMSQs/8a5ae9523c.png)
