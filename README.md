@@ -12,3 +12,12 @@ Name|Value Type|Default Value|Decription
 ---|---|---|---
 Target_User_Name|string||User name which you want bot to transfer to|
 API_Key|string||API Key for connect authoriztion ([Apply for api](http://mikirasora.moe/account/api))|
+
+### Notice
+This bot **send interval** for all user is 300ms , it will **be automatic to combime messages if bot receive more message**.
+
+### Usage
+[Video Tutorial](https://puu.sh/AOACO/056147cb4a.mp4)
+
+### Screenshot
+![](https://puu.sh/AMSQs/8a5ae9523c.png)
