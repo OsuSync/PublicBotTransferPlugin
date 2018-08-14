@@ -42,8 +42,13 @@ function startServer(config) {
 
     ircClient.connect();
     ircClient.addListener('message', function (from, to, message) {
-        console.debug(`[IRC to Sync]User: ${from}, Message: ${message}`);
         var user = onlineUsersForUsername.get(to);
+        if(user === undefined){
+            console.debug(`[IRC to Sync][No Connent]User: ${from}, Message: ${message}`);
+            return;
+        }
+
+        console.debug(`[IRC to Sync]User: ${from}, Message: ${message}`);
         user.websocket.send(message,{bbinary:false});
     });
 
