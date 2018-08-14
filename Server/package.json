@@ -1,0 +1,9 @@
+{
+    "name": "public-bot-transfer-server",
+    "version": "0.0.1",
+    "description": "Public Bot Transfer Plugin's server side",
+    "dependencies": {
+        "irc": "^0.5.2",
+        "ws": "^6.0.0"
+    }
+}
