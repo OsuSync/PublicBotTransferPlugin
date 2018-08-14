@@ -31,10 +31,10 @@ function startServer(config) {
     });
 
     let ws = new WebSocketServer({
-        port: 80,
+        port: config.port,
         noServer: true,
         verifyClient: socketVerify,
-        path: '/osu_bot'
+        path: config.path
     });
 
     let onlineUsers = new Map();
@@ -80,6 +80,8 @@ function startServer(config) {
     function onError(err) {
         console.error(err);
     }
+
+    console.log(`Sync Bot Server Start: ws://0.0.0.0:${config.port}${config.path}`);
 }
 
 config = loadConfig();

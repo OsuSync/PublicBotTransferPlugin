@@ -1,5 +1,7 @@
 {
     "ircBotName":"",
     "ircBotPassword":"",
-    "welcomeMessage":""
+    "welcomeMessage":"",
+    "port":80,
+    "path":"/osu_bot"
 }
