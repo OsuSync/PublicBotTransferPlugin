@@ -10,16 +10,21 @@ function loadConfig() {
 }
 
 function socketVerify(info) {
+    let cookie = parseCookie(info.req.headers.cookie);
+    if(cookie.transfer_target_name === undefined)
+        return false;
     return true;
 }
 
 function parseCookie(cookie) {
     let cookieObject = {};
-    let props = cookie.split(';');
-    for (let prop of props) {
-        prop = prop.trim();
-        let pair = prop.split('=');
-        cookieObject[pair[0].trim()] = pair[1].trim();
+    if (cookie !== undefined) {
+        let props = cookie.split(';');
+        for (let prop of props) {
+            prop = prop.trim();
+            let pair = prop.split('=');
+            cookieObject[pair[0].trim()] = pair[1].trim();
+        }
     }
     return cookieObject;
 }
@@ -28,6 +33,8 @@ function startServer(config) {
     const CONST_HEART_CHECK_FLAG = "\x01\x01HEARTCHECK";
     const CONST_HEART_CHECK_OK_FLAG = "\x01\x02HEARTCHECKOK";
     const CONST_HEART_CHECK_TIMEOUT = 30 * 1000;//30s
+    const CONST_CLEAR_NO_RESPONSE_USER_TIMER_INTERVAL = 60 * 1000//60s
+    const CONST_CLEAR_NO_RESPONSE_USER_DATE_INTERVAL = 30 * 60 * 1000;//30m
 
     let ircClient = new irc.Client('irc.ppy.sh', config.ircBotName, {
         port: 6667,
@@ -53,7 +60,12 @@ function startServer(config) {
         var user = onlineUsersForUsername.get(from);
         if (user === undefined) {
             console.debug(`[IRC to Sync][Not Connected]OsuName: ${from}, Message: ${message}`);
-            ircClient.say(from,"Your Sync isn't connected to the server.");
+            ircClient.say(from, "Your Sync isn't connected to the server.");
+            return;
+        }
+        if (message === "!logout") {
+            user.websocket.close();
+            ircClient.say(from, "Logout success!");
             return;
         }
         onIrcMessage(user, message);
@@ -66,18 +78,20 @@ function startServer(config) {
             let user = {
                 websocket: wsocket,
                 ircTargetUsername: cookie.transfer_target_name,
-                heartChecker:setTimeout(()=>wsocket.close(),CONST_HEART_CHECK_TIMEOUT)
+                heartChecker: null,
+                lastSendTime: new Date()
             };
 
-            wsocket.on('message', (msg) => 
-            {
+            wsocket.on('message', (msg) => {
                 let user = onlineUsers.get(wsocket)
-                if(msg == CONST_HEART_CHECK_FLAG){
+                user.lastSendTime = new Date();
+                if (msg == CONST_HEART_CHECK_FLAG) {
                     //reset heart checker
-                    clearTimeout(user.heartChecker);
-                    user.heartChecker = setTimeout(()=>wsocket.close(),CONST_HEART_CHECK_TIMEOUT);
+                    if (user.heartChecker !== null)
+                        clearTimeout(user.heartChecker);
+                    user.heartChecker = setTimeout(() => wsocket.close(), CONST_HEART_CHECK_TIMEOUT);
 
-                    if(wsocket.readyState === wsocket.OPEN)
+                    if (wsocket.readyState === wsocket.OPEN)
                         wsocket.send(CONST_HEART_CHECK_OK_FLAG);
 
                     return;
@@ -90,16 +104,18 @@ function startServer(config) {
                 if (!onlineUsers.has(wsocket)) {
                     return;
                 }
-
-                clearTimeout(user.heartChecker);
+                if (user.heartChecker !== null)
+                    clearTimeout(user.heartChecker);
                 onlineUsers.delete(wsocket);
                 onlineUsersForUsername.delete(user.ircTargetUsername);
+
+                ircClient.say(user.ircTargetUsername, "Your Sync has disconnected from the server.");
                 console.log(`Online User Count: ${onlineUsers.size}`);
             });
 
             if (onlineUsersForUsername.has(user.ircTargetUsername)) {
-                if(wsocket.readyState === wsocket.OPEN)
-                    wsocket.send('The TargetUsername is connected!');
+                if (wsocket.readyState === wsocket.OPEN)
+                    wsocket.send(`The TargetUsername is connected! Send "!logout" logout the user to ${config.ircBotName}`);
                 wsocket.close();
                 return;
             }
@@ -115,7 +131,7 @@ function startServer(config) {
 
     function onIrcMessage(user, msg) {
         console.debug(`[IRC to Sync]User: ${user.ircTargetUsername}, Message: ${msg}`);
-        if(user.websocket.readyState === user.websocket.OPEN)
+        if (user.websocket.readyState === user.websocket.OPEN)
             user.websocket.send(msg);
     }
 
@@ -132,7 +148,25 @@ function startServer(config) {
         console.error(`[Websocket][ERROR]${err}`);
     }
 
-    console.log(`Sync Bot Server Start: ws://0.0.0.0:${config.port}${config.path}`);
+    //Regular cleaning
+    setInterval(function () {
+        let date = new Date();
+        let list = [];
+        onlineUsersForUsername.forEach((v, k) => {
+            if (date - v.lastSendTime > CONST_CLEAR_NO_RESPONSE_USER_DATE_INTERVAL) {
+                list.push(v);
+            }
+        });
+
+        let str = "Clear Users: ";
+
+        for (let user of list) {
+            str += `${user.ircTargetUsername}\t`;
+            user.websocket.close();
+        }
+        if (list.length !== 0)
+            console.log(str);
+    }, CONST_CLEAR_NO_RESPONSE_USER_TIMER_INTERVAL);
 
     //console command
     let rl = readline.createInterface({
@@ -140,7 +174,7 @@ function startServer(config) {
         output: process.stdout
     });
 
-    function printHelp(){
+    function printHelp() {
         console.log('onlineusers    - list all online users');
         console.log('sendtoirc username message    - send message to user via irc');
         console.log('sendtosync username message    - send message to user via sync');
@@ -157,7 +191,7 @@ function startServer(config) {
                     } else {
                         console.log("[Command]User no connented");
                     }
-                }else{
+                } else {
                     printHelp();
                 }
                 break;
@@ -169,13 +203,13 @@ function startServer(config) {
                     } else {
                         console.log("[Command]User no connented");
                     }
-                }else{
+                } else {
                     printHelp();
                 }
                 break;
             case "onlineusers":
                 let str = '';
-                onlineUsersForUsername.forEach((v,k)=>str+=`${k}\t`);
+                onlineUsersForUsername.forEach((v, k) => str += `${k}\t`);
                 console.log(str);
                 console.log(`Count:${onlineUsersForUsername.size}`);
                 break;
@@ -184,6 +218,8 @@ function startServer(config) {
                 printHelp();
         }
     });
+
+    console.log(`Sync Bot Server Start: ws://0.0.0.0:${config.port}${config.path}`);
 }
 
 config = loadConfig();

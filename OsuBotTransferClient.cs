@@ -1,4 +1,4 @@
-﻿using Sync.Client;
+using Sync.Client;
 using Sync.MessageFilter;
 using Sync.Source;
 using Sync.Tools;
@@ -143,7 +143,7 @@ namespace PublicOsuBotTransfer
         {
             IO.CurrentIO.WriteColor($"[OsuBotTransferClient]关闭连接", ConsoleColor.Green);
             is_connected = false;
-            heart_check_timer.Dispose();
+            heart_check_timer?.Dispose();
             heart_check_timer = null;
         }
 
