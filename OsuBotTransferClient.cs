@@ -143,6 +143,8 @@ namespace PublicOsuBotTransfer
         {
             IO.CurrentIO.WriteColor($"[OsuBotTransferClient]关闭连接", ConsoleColor.Green);
             is_connected = false;
+            heart_check_timer.Dispose();
+            heart_check_timer = null;
         }
 
         public override void StopWork()
@@ -151,8 +153,6 @@ namespace PublicOsuBotTransfer
                 return;
             try
             {
-                heart_check_timer.Dispose();
-                heart_check_timer = null;
                 web_socket.Close();
                 web_socket.OnClose -= Web_socket_OnClose;
                 web_socket.OnError -= Web_socket_OnError;

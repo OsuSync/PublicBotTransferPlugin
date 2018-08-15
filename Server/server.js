@@ -77,7 +77,9 @@ function startServer(config) {
                     clearTimeout(user.heartChecker);
                     user.heartChecker = setTimeout(()=>wsocket.close(),CONST_HEART_CHECK_TIMEOUT);
 
-                    wsocket.send(CONST_HEART_CHECK_OK_FLAG);
+                    if(wsocket.readyState === wsocket.OPEN)
+                        wsocket.send(CONST_HEART_CHECK_OK_FLAG);
+
                     return;
                 }
                 onWebsocketMessage(user, msg);
@@ -88,13 +90,16 @@ function startServer(config) {
                 if (!onlineUsers.has(wsocket)) {
                     return;
                 }
+
+                clearTimeout(user.heartChecker);
                 onlineUsers.delete(wsocket);
                 onlineUsersForUsername.delete(user.ircTargetUsername);
                 console.log(`Online User Count: ${onlineUsers.size}`);
             });
 
             if (onlineUsersForUsername.has(user.ircTargetUsername)) {
-                wsocket.send('The TargetUsername is connected!');
+                if(wsocket.readyState === wsocket.OPEN)
+                    wsocket.send('The TargetUsername is connected!');
                 wsocket.close();
                 return;
             }
@@ -110,7 +115,8 @@ function startServer(config) {
 
     function onIrcMessage(user, msg) {
         console.debug(`[IRC to Sync]User: ${user.ircTargetUsername}, Message: ${msg}`);
-        user.websocket.send(msg);
+        if(user.websocket.readyState === user.websocket.OPEN)
+            user.websocket.send(msg);
     }
 
     function onIrcError(err) {
