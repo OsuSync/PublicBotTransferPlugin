@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using WebSocketSharp;
 
@@ -14,14 +15,19 @@ namespace PublicOsuBotTransfer
     public class OsuBotTransferClient : DefaultClient, IConfigurable
     {
         private const string CONST_ACTION_FLAG = "\x0001ACTION ";
-        private const string CONNECT_PATH = @"ws://mikirasora.moe/osu_bot";
+        private const string CONST_HEART_CHECK_FLAG = "\x01\x01HEARTCHECK";
+        private const string CONST_HEART_CHECK_OK_FLAG = "\x01\x02HEARTCHECKOK";
+        private const int CONST_HEART_CHECK_INTERVAL = 10;
 
+        public static ConfigurationElement ServerPath { get; set; } =  @"ws://mikirasora.moe/osu_bot";
         public static ConfigurationElement Target_User_Name { get; set; } = "";
         public static ConfigurationElement API_Key { get; set; } = "";
 
         private bool is_connected = false;
 
         private WebSocket web_socket;
+        private Timer heart_check_timer;
+        private Thread hear_check_failed_thread;
 
         public OsuBotTransferClient() : base("MikiraSora", "OsuBotTransferClient")
         {
@@ -74,7 +80,7 @@ namespace PublicOsuBotTransfer
                 return;
             }
 
-            web_socket = new WebSocket(CONNECT_PATH);
+            web_socket = new WebSocket(ServerPath);
             web_socket.OnClose += Web_socket_OnClose;
             web_socket.OnError += Web_socket_OnError;
             web_socket.OnMessage += Web_socket_OnMessage;
@@ -86,7 +92,21 @@ namespace PublicOsuBotTransfer
             NickName = Target_User_Name;
 
             web_socket.ConnectAsync();
+            heart_check_timer=new Timer((_)=>SendHeartCheck(),null,
+                TimeSpan.FromSeconds(CONST_HEART_CHECK_INTERVAL),
+                TimeSpan.FromSeconds(CONST_HEART_CHECK_INTERVAL));
         }
+
+        private void SendHeartCheck()
+        {
+            web_socket.Send(CONST_HEART_CHECK_FLAG);
+
+            hear_check_failed_thread =new Thread(() =>
+            {
+                Thread.Sleep(TimeSpan.FromSeconds(CONST_HEART_CHECK_INTERVAL));
+                StopWork();
+            });
+        } 
 
         private void Web_socket_OnConnected(object sender, EventArgs e)
         {
@@ -97,6 +117,12 @@ namespace PublicOsuBotTransfer
 
         private void Web_socket_OnMessage(object sender, MessageEventArgs e)
         {
+            if (e.Data == CONST_HEART_CHECK_OK_FLAG)
+            {
+                hear_check_failed_thread.Abort();
+                return;
+            }
+
             string nick = Target_User_Name;
             string rawmsg = e.Data;
 
@@ -125,6 +151,8 @@ namespace PublicOsuBotTransfer
                 return;
             try
             {
+                heart_check_timer.Dispose();
+                heart_check_timer = null;
                 web_socket.Close();
                 web_socket.OnClose -= Web_socket_OnClose;
                 web_socket.OnError -= Web_socket_OnError;

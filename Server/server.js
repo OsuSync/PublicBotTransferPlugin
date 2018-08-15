@@ -25,6 +25,10 @@ function parseCookie(cookie) {
 }
 
 function startServer(config) {
+    const CONST_HEART_CHECK_FLAG = "\x01\x01HEARTCHECK";
+    const CONST_HEART_CHECK_OK_FLAG = "\x01\x02HEARTCHECKOK";
+    const CONST_HEART_CHECK_TIMEOUT = 30 * 1000;//30s
+
     let ircClient = new irc.Client('irc.ppy.sh', config.ircBotName, {
         port: 6667,
         autoConnect: true,
@@ -61,10 +65,24 @@ function startServer(config) {
             let cookie = parseCookie(request.headers.cookie);
             let user = {
                 websocket: wsocket,
-                ircTargetUsername: cookie.transfer_target_name
+                ircTargetUsername: cookie.transfer_target_name,
+                heartChecker:setTimeout(()=>wsocket.close(),CONST_HEART_CHECK_TIMEOUT)
             };
 
-            wsocket.on('message', (msg) => onWebsocketMessage(onlineUsers.get(wsocket), msg));
+            wsocket.on('message', (msg) => 
+            {
+                let user = onlineUsers.get(wsocket)
+                if(msg == CONST_HEART_CHECK_FLAG){
+                    //reset heart checker
+                    clearTimeout(user.heartChecker);
+                    user.heartChecker = setTimeout(()=>wsocket.close(),CONST_HEART_CHECK_TIMEOUT);
+
+                    wsocket.send(CONST_HEART_CHECK_OK_FLAG);
+                    return;
+                }
+                onWebsocketMessage(user, msg);
+            });
+
             wsocket.on('error', onWebsocketError);
             wsocket.on('close', () => {
                 if (!onlineUsers.has(wsocket)) {
