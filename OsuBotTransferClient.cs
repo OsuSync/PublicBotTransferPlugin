@@ -19,7 +19,7 @@ namespace PublicOsuBotTransfer
         private const string CONST_HEART_CHECK_OK_FLAG = "\x01\x02HEARTCHECKOK";
         private const int CONST_HEART_CHECK_INTERVAL = 10;
 
-        public static ConfigurationElement ServerPath { get; set; } =  @"ws://mikirasora.moe/osu_bot";
+        public static ConfigurationElement ServerPath { get; set; } =  @"wss://osubot.kedamaovo.moe";
         public static ConfigurationElement Target_User_Name { get; set; } = "";
         public static ConfigurationElement API_Key { get; set; } = "";
 
