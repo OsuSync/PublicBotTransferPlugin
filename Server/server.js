@@ -3,6 +3,22 @@ let irc = require('irc');
 let fs = require('fs')
 let readline = require('readline');
 
+let oldLog = console.log;
+let oldError = console.error;
+let oldDebug = console.debug;
+
+console.log=function(msg){
+    oldLog(`[${new Date().toLocaleTimeString()}] [Log] ${msg}`);
+}
+
+console.error=function(msg){
+    oldError(`[${new Date().toLocaleTimeString()}] [Error] ${msg}`)
+}
+
+console.debug=function(msg){
+    oldDebug(`[${new Date().toLocaleTimeString()}] [Debug] ${msg}`)
+}
+
 function loadConfig() {
     let data = fs.readFileSync('./config.json');
     let config = JSON.parse(data.toString());
@@ -54,12 +70,12 @@ function startServer(config) {
     let onlineUsersForUsername = new Map();
 
     //irc event
-    ircClient.addListener('registered', (msg) => console.log(`[IRC]Connected! MSG:${JSON.stringify(msg)}`));
+    ircClient.addListener('registered', (msg) => console.log(`[IRC] Connected! MSG:${JSON.stringify(msg)}`));
     ircClient.addListener('error', onIrcError);
     ircClient.addListener('message', function (from, to, message) {
         var user = onlineUsersForUsername.get(from);
         if (user === undefined) {
-            console.debug(`[IRC to Sync][Not Connected]OsuName: ${from}, Message: ${message}`);
+            console.log(`[IRC to Sync] [Not Connected] OsuName: ${from}, Message: ${message}`);
             ircClient.say(from, "Your Sync isn't connected to the server.");
             return;
         }
@@ -130,22 +146,22 @@ function startServer(config) {
         });
 
     function onIrcMessage(user, msg) {
-        console.debug(`[IRC to Sync]User: ${user.ircTargetUsername}, Message: ${msg}`);
+        console.log(`[IRC to Sync] User: ${user.ircTargetUsername}, Message: ${msg}`);
         if (user.websocket.readyState === user.websocket.OPEN)
             user.websocket.send(msg);
     }
 
     function onIrcError(err) {
-        console.error(`[IRC][ERROR]${JSON.stringify(err)}`);
+        console.error(`[IRC] ${JSON.stringify(err)}`);
     }
 
     function onWebsocketMessage(user, msg) {
-        console.debug(`[Sync to IRC]User: ${user.ircTargetUsername}, Message: ${msg}`);
+        console.log(`[Sync to IRC] User: ${user.ircTargetUsername}, Message: ${msg}`);
         ircClient.say(user.ircTargetUsername, msg);
     }
 
     function onWebsocketError(err) {
-        console.error(`[Websocket][ERROR]${err}`);
+        console.error(`[Websocket] ${err}`);
     }
 
     //Regular cleaning
@@ -175,10 +191,10 @@ function startServer(config) {
     });
 
     function printHelp() {
-        console.log('onlineusers    - list all online users');
-        console.log('sendtoirc username message    - send message to user via irc');
-        console.log('sendtosync username message    - send message to user via sync');
-        console.log('help    - display help');
+        console.info('onlineusers\t\t\t- list all online users');
+        console.info('sendtoirc username message\t- send message to user via irc');
+        console.info('sendtosync username message\t- send message to user via sync');
+        console.info('help\t\t\t\t- display help');
     }
 
     rl.on('line', function (line) {
@@ -189,7 +205,7 @@ function startServer(config) {
                     if (onlineUsersForUsername.has(breaked[1])) {
                         ircClient.say(breaked[1], breaked[2]);
                     } else {
-                        console.log("[Command]User no connented");
+                        console.info("[Command] User no connented");
                     }
                 } else {
                     printHelp();
@@ -201,7 +217,7 @@ function startServer(config) {
                         let user = onlineUsersForUsername.get(breaked[1]);
                         user.websocket.send(breaked[2]);
                     } else {
-                        console.log("[Command]User no connented");
+                        console.info("[Command] User no connented");
                     }
                 } else {
                     printHelp();
@@ -210,8 +226,8 @@ function startServer(config) {
             case "onlineusers":
                 let str = '';
                 onlineUsersForUsername.forEach((v, k) => str += `${k}\t`);
-                console.log(str);
-                console.log(`Count:${onlineUsersForUsername.size}`);
+                console.info(str);
+                console.info(`Count:${onlineUsersForUsername.size}`);
                 break;
             case "help":
             default:
