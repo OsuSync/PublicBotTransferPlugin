@@ -7,15 +7,15 @@ let oldLog = console.log;
 let oldError = console.error;
 let oldDebug = console.debug;
 
-console.log=function(msg){
+console.log = function (msg) {
     oldLog(`[${new Date().toLocaleTimeString()}] [Log] ${msg}`);
 }
 
-console.error=function(msg){
+console.error = function (msg) {
     oldError(`[${new Date().toLocaleTimeString()}] [Error] ${msg}`)
 }
 
-console.debug=function(msg){
+console.debug = function (msg) {
     oldDebug(`[${new Date().toLocaleTimeString()}] [Debug] ${msg}`)
 }
 
@@ -27,7 +27,9 @@ function loadConfig() {
 
 function socketVerify(info) {
     let cookie = parseCookie(info.req.headers.cookie);
-    if(cookie.transfer_target_name === undefined)
+    if (cookie.transfer_target_name === undefined)
+        return false;
+    if(cookie.transfer_target_name.indexOf("#") != -1)
         return false;
     return true;
 }
