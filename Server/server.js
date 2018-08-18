@@ -124,7 +124,7 @@ function startServer(config) {
                     return;
                 }
                 user.messageCountPerMinute--;
-                //onWebsocketMessage(user, msg);
+                onWebsocketMessage(user, msg);
             });
 
             wsocket.on('error', onWebsocketError);
