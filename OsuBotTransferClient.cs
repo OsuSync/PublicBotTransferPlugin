@@ -127,10 +127,10 @@ namespace PublicOsuBotTransfer
             string rawmsg = e.Data;
 
             IO.CurrentIO.WriteColor($"[OsuBotTransferClient]{e.Data}", ConsoleColor.Cyan);
-            Sync.SyncHost.Instance.Messages.RaiseMessage<ISourceClient>(new DanmakuMessage() {
+            Task.Run(()=>Sync.SyncHost.Instance.Messages.RaiseMessage<ISourceClient>(new DanmakuMessage() {
                 User = nick,
                 Message=rawmsg
-            });
+            }));
         }
 
         private void Web_socket_OnError(object sender, ErrorEventArgs e)

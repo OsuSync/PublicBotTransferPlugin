@@ -25,11 +25,13 @@ function loadConfig() {
     return config;
 }
 
-function socketVerify(info) {
+function socketVerify(info,config) {
     let cookie = parseCookie(info.req.headers.cookie);
     if (cookie.transfer_target_name === undefined)
         return false;
     if(cookie.transfer_target_name.indexOf("#") != -1)
+        return false;
+    if(cookie.transfer_target_name === config.ircBotName)
         return false;
     return true;
 }
@@ -64,7 +66,7 @@ function startServer(config) {
     let ws = new WebSocketServer({
         port: config.port,
         noServer: true,
-        verifyClient: socketVerify,
+        verifyClient: (info)=>socketVerify(info,config),
         path: config.path
     });
 
@@ -97,13 +99,15 @@ function startServer(config) {
                 websocket: wsocket,
                 ircTargetUsername: cookie.transfer_target_name,
                 heartChecker: null,
-                lastSendTime: new Date()
+                lastSendTime: new Date(),
+                messageCountPerMinute: config.maxMessageCountPerMinute,
+                timer: setInterval(()=>user.messageCountPerMinute = config.maxMessageCountPerMinute,1 * 60 * 1000)
             };
 
             wsocket.on('message', (msg) => {
                 let user = onlineUsers.get(wsocket)
                 user.lastSendTime = new Date();
-                if (msg == CONST_HEART_CHECK_FLAG) {
+                if (msg === CONST_HEART_CHECK_FLAG) {
                     //reset heart checker
                     if (user.heartChecker !== null)
                         clearTimeout(user.heartChecker);
@@ -114,7 +118,13 @@ function startServer(config) {
 
                     return;
                 }
-                onWebsocketMessage(user, msg);
+                if(user.messageCountPerMinute === 0){
+                    user.websocket.send("Send too often, please try again later.");
+                    user.websocket.send("Not suggest user who are streamer with lots of viewer because it's may made osu!irc bot spam and be punished by Bancho");
+                    return;
+                }
+                user.messageCountPerMinute--;
+                //onWebsocketMessage(user, msg);
             });
 
             wsocket.on('error', onWebsocketError);
@@ -124,6 +134,7 @@ function startServer(config) {
                 }
                 if (user.heartChecker !== null)
                     clearTimeout(user.heartChecker);
+                clearInterval(user.timer);
                 onlineUsers.delete(wsocket);
                 onlineUsersForUsername.delete(user.ircTargetUsername);
 
@@ -143,6 +154,12 @@ function startServer(config) {
 
             if (config.welcomeMessage != null && config.welcomeMessage != "")
                 ircClient.say(user.ircTargetUsername, config.welcomeMessage);
+
+            if (request.headers["botredirectfrom"] !== undefined) {
+                wsocket.send("Your current MikiraSora's PublicBotTransferPlugin server is about to close. Please go to https://github.com/MikiraSora/PublicBotTransferPlugin/releases to download the latest version of the plugin and extract it to the Sync root directory.")
+            }
+
+            wsocket.send(`You can send ${config.maxMessageCountPerMinute} messages per minute`);
 
             console.log(`Online User Count: ${onlineUsers.size}`);
         });

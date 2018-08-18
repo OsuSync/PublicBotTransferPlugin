@@ -3,5 +3,6 @@
     "ircBotPassword":"",
     "welcomeMessage":"",
     "port":80,
-    "path":"/"
+    "path":"/",
+    "maxMessageCountPerMinute":5
 }
