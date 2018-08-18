@@ -27,7 +27,7 @@ namespace PublicOsuBotTransfer
 
         private WebSocket web_socket;
         private Timer heart_check_timer;
-        private Thread hear_check_failed_thread;
+        private Thread heart_check_failed_thread;
 
         public OsuBotTransferClient() : base("MikiraSora", "OsuBotTransferClient")
         {
@@ -101,7 +101,7 @@ namespace PublicOsuBotTransfer
         {
             web_socket.Send(CONST_HEART_CHECK_FLAG);
 
-            hear_check_failed_thread =new Thread(() =>
+            heart_check_failed_thread =new Thread(() =>
             {
                 Thread.Sleep(TimeSpan.FromSeconds(CONST_HEART_CHECK_INTERVAL));
                 StopWork();
@@ -119,7 +119,7 @@ namespace PublicOsuBotTransfer
         {
             if (e.Data == CONST_HEART_CHECK_OK_FLAG)
             {
-                hear_check_failed_thread.Abort();
+                heart_check_failed_thread.Abort();
                 return;
             }
 
