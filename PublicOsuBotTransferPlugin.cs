@@ -24,7 +24,6 @@ namespace PublicOsuBotTransfer
             var client= new OsuBotTransferClient();
 
             config_manager = new PluginConfigurationManager(this);
-            config_manager.AddItem(this);
             config_manager.AddItem(client);
 
             base.EventBus.BindEvent<InitClientEvent>(evt => {

@@ -1,0 +1,8 @@
+{
+    "ircBotName":"",
+    "ircBotPassword":"",
+    "welcomeMessage":"",
+    "port":80,
+    "path":"/",
+    "maxMessageCountPerMinute":5
+}
