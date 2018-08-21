@@ -3,20 +3,28 @@ let irc = require('irc');
 let fs = require('fs')
 let readline = require('readline');
 
+let stream = fs.createWriteStream(`${__dirname}/log.log`);
+
 let oldLog = console.log;
 let oldError = console.error;
 let oldDebug = console.debug;
 
 console.log = function (msg) {
-    oldLog(`[${new Date().toLocaleTimeString()}] [Log] ${msg}`);
+    let logStr = `[${new Date().toLocaleTimeString()}] [Log] ${msg}`;
+    oldLog(logStr);
+    stream.write(`${logStr}\n`);
 }
 
 console.error = function (msg) {
-    oldError(`[${new Date().toLocaleTimeString()}] [Error] ${msg}`)
+    let logStr = `[${new Date().toLocaleTimeString()}] [Error] ${msg}`;
+    oldError(logStr);
+    stream.write(`${logStr}\n`);
 }
 
 console.debug = function (msg) {
-    oldDebug(`[${new Date().toLocaleTimeString()}] [Debug] ${msg}`)
+    let logStr = `[${new Date().toLocaleTimeString()}] [Debug] ${msg}`;
+    oldDebug(logStr);
+    stream.write(`${logStr}\n`);
 }
 
 function loadConfig() {
