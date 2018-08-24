@@ -84,13 +84,20 @@ function startServer(config) {
     //irc event
     ircClient.addListener('registered', (msg) => console.log(`[IRC] Connected! MSG:${JSON.stringify(msg)}`));
     ircClient.addListener('error', onIrcError);
+    //received irc message
     ircClient.addListener('message', function (from, to, message) {
         var user = onlineUsersForUsername.get(from);
+        if(from === config.ircBotName){
+            console.log(`[IRC] Received message from self, Message: ${message}`);
+            return;
+        }
+
         if (user === undefined) {
             console.log(`[IRC to Sync] [Not Connected] OsuName: ${from}, Message: ${message}`);
             ircClient.say(from, "Your Sync isn't connected to the server.");
             return;
         }
+        //force disconnect
         if (message === "!logout") {
             user.websocket.close();
             ircClient.say(from, "Logout success!");
@@ -98,6 +105,13 @@ function startServer(config) {
         }
         onIrcMessage(user, message);
     });
+
+    //hook say
+    ircClient.oldSay = ircClient.say;
+    ircClient.say = function(nick,msg){
+        if(nick !== config.ircBotName)
+            ircClient.oldSay(nick,msg);
+    };
 
     //websocket event
     ws.on('connection',
@@ -108,13 +122,18 @@ function startServer(config) {
                 ircTargetUsername: cookie.transfer_target_name,
                 heartChecker: null,
                 lastSendTime: new Date(),
+                //message limit
                 messageCountPerMinute: config.maxMessageCountPerMinute,
+                //reset message limit
                 timer: setInterval(()=>user.messageCountPerMinute = config.maxMessageCountPerMinute,1 * 60 * 1000)
             };
 
+            //received websocket message
             wsocket.on('message', (msg) => {
                 let user = onlineUsers.get(wsocket)
                 user.lastSendTime = new Date();
+
+                //message is heart check
                 if (msg === CONST_HEART_CHECK_FLAG) {
                     //reset heart checker
                     if (user.heartChecker !== null)
@@ -126,12 +145,15 @@ function startServer(config) {
 
                     return;
                 }
+
                 if(user.messageCountPerMinute === 0){
                     user.websocket.send("Send too often, please try again later.");
                     user.websocket.send("Not suggest user who are streamer with lots of viewer because it's may made osu!irc bot spam and be punished by Bancho");
                     return;
                 }
                 user.messageCountPerMinute--;
+
+                //process normal message
                 onWebsocketMessage(user, msg);
             });
 
@@ -150,6 +172,7 @@ function startServer(config) {
                 console.log(`Online User Count: ${onlineUsers.size}`);
             });
 
+            //Check that the user is online.
             if (onlineUsersForUsername.has(user.ircTargetUsername)) {
                 if (wsocket.readyState === wsocket.OPEN)
                     wsocket.send(`The TargetUsername is connected! Send "!logout" logout the user to ${config.ircBotName}`);
@@ -157,16 +180,17 @@ function startServer(config) {
                 return;
             }
 
+            //add user to onlineUsers set
             onlineUsers.set(wsocket, user);
             onlineUsersForUsername.set(user.ircTargetUsername, user);
 
+            //send welcomeMessage
             if (config.welcomeMessage != null && config.welcomeMessage != "")
                 ircClient.say(user.ircTargetUsername, config.welcomeMessage);
 
             if (request.headers["botredirectfrom"] !== undefined) {
                 wsocket.send("Your current MikiraSora's PublicBotTransferPlugin server is about to close. Please go to https://github.com/MikiraSora/PublicBotTransferPlugin/releases to download the latest version of the plugin and extract it to the Sync root directory.")
             }
-
             wsocket.send(`You can send ${config.maxMessageCountPerMinute} messages per minute`);
 
             console.log(`Online User Count: ${onlineUsers.size}`);
