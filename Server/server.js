@@ -33,13 +33,13 @@ function loadConfig() {
     return config;
 }
 
-function socketVerify(info,config) {
+function socketVerify(info, config) {
     let cookie = parseCookie(info.req.headers.cookie);
-    if(cookie.transfer_target_name === undefined)
+    if (cookie.transfer_target_name === undefined)
         return false;
-    if(cookie.transfer_target_name.indexOf("#") != -1)
+    if (cookie.transfer_target_name.indexOf("#") != -1)
         return false;
-    if(cookie.transfer_target_name === config.ircBotName)
+    if (cookie.transfer_target_name.toLowerCase() === config.ircBotName.toLowerCase())
         return false;
     return true;
 }
@@ -74,7 +74,7 @@ function startServer(config) {
     let ws = new WebSocketServer({
         port: config.port,
         noServer: true,
-        verifyClient: (info)=>socketVerify(info,config),
+        verifyClient: (info) => socketVerify(info, config),
         path: config.path
     });
 
@@ -86,8 +86,8 @@ function startServer(config) {
     ircClient.addListener('error', onIrcError);
     //received irc message
     ircClient.addListener('message', function (from, to, message) {
-        let user = onlineUsersForUsername.get(from);
-        if(from === config.ircBotName){
+        let user = onlineUsersForUsername.get(from.toLowerCase());
+        if (from === config.ircBotName) {
             console.log(`[IRC] Received message from self, Message: ${message}`);
             return;
         }
@@ -108,9 +108,9 @@ function startServer(config) {
 
     //hook say
     ircClient.oldSay = ircClient.say;
-    ircClient.say = function(nick,msg){
-        if(nick !== config.ircBotName)
-            ircClient.oldSay(nick,msg);
+    ircClient.say = function (nick, msg) {
+        if (nick !== config.ircBotName)
+            ircClient.oldSay(nick, msg);
     };
 
     //websocket event
@@ -120,12 +120,13 @@ function startServer(config) {
             let user = {
                 websocket: wsocket,
                 ircTargetUsername: cookie.transfer_target_name,
+                ircTargetUsernameLowerCase: cookie.transfer_target_name.toLowerCase(),
                 heartChecker: null,
                 lastSendTime: new Date(),
                 //message limit
                 messageCountPerMinute: config.maxMessageCountPerMinute,
                 //reset message limit
-                timer: setInterval(()=>user.messageCountPerMinute = config.maxMessageCountPerMinute,1 * 60 * 1000)
+                timer: setInterval(() => user.messageCountPerMinute = config.maxMessageCountPerMinute, 1 * 60 * 1000)
             };
 
             //received websocket message
@@ -146,7 +147,7 @@ function startServer(config) {
                     return;
                 }
 
-                if(user.messageCountPerMinute === 0){
+                if (user.messageCountPerMinute === 0) {
                     user.websocket.send("Send too often, please try again later.");
                     user.websocket.send("Not suggest user who are streamer with lots of viewer because it's may made osu!irc bot spam and be punished by Bancho");
                     return;
@@ -166,14 +167,14 @@ function startServer(config) {
                     clearTimeout(user.heartChecker);
                 clearInterval(user.timer);
                 onlineUsers.delete(wsocket);
-                onlineUsersForUsername.delete(user.ircTargetUsername);
+                onlineUsersForUsername.delete(user.ircTargetUsernameLowerCase);
 
                 ircClient.say(user.ircTargetUsername, "Your Sync has disconnected from the server.");
                 console.log(`Online User Count: ${onlineUsers.size}`);
             });
 
             //Check that the user is online.
-            if (onlineUsersForUsername.has(user.ircTargetUsername)) {
+            if (onlineUsersForUsername.has(user.ircTargetUsernameLowerCase)) {
                 if (wsocket.readyState === wsocket.OPEN)
                     wsocket.send(`The TargetUsername is connected! Send "!logout" logout the user to ${config.ircBotName}`);
                 wsocket.close();
@@ -182,7 +183,7 @@ function startServer(config) {
 
             //add user to onlineUsers set
             onlineUsers.set(wsocket, user);
-            onlineUsersForUsername.set(user.ircTargetUsername, user);
+            onlineUsersForUsername.set(user.ircTargetUsernameLowerCase, user);
 
             //send welcomeMessage
             if (config.welcomeMessage != null && config.welcomeMessage != "")
@@ -253,7 +254,7 @@ function startServer(config) {
         switch (breaked[0]) {
             case "sendtoirc":
                 if (breaked.length >= 3) {
-                    if (onlineUsersForUsername.has(breaked[1])) {
+                    if (onlineUsersForUsername.has(breaked[1].toLowerCase())) {
                         ircClient.say(breaked[1], breaked[2]);
                     } else {
                         console.info("[Command] User no connented");
@@ -264,8 +265,8 @@ function startServer(config) {
                 break;
             case "sendtosync":
                 if (breaked.length >= 3) {
-                    if (onlineUsersForUsername.has(breaked[1])) {
-                        let user = onlineUsersForUsername.get(breaked[1]);
+                    if (onlineUsersForUsername.has(breaked[1].toLowerCase())) {
+                        let user = onlineUsersForUsername.get(breaked[1].toLowerCase());
                         user.websocket.send(breaked[2]);
                     } else {
                         console.info("[Command] User no connented");
@@ -276,7 +277,7 @@ function startServer(config) {
                 break;
             case "onlineusers":
                 let str = '';
-                onlineUsersForUsername.forEach((v, k) => str += `${k}\t`);
+                onlineUsersForUsername.forEach((v, k) => str += `${v.ircTargetUsername}\t`);
                 console.info(str);
                 console.info(`Count:${onlineUsersForUsername.size}`);
                 break;
@@ -285,6 +286,20 @@ function startServer(config) {
                 printHelp();
         }
     });
+
+    if (process.platform === "win32") {
+        rl.on("SIGINT", function () {
+            process.emit("SIGINT");
+        });
+    }
+
+    process.on("SIGINT", function () {
+        onlineUsersForUsername.forEach((v, k) => {
+            v.websocket.send("The server is down.");
+            v.websocket.close();
+        });
+        process.exit();
+    })
 
     console.log(`Sync Bot Server Start: ws://0.0.0.0:${config.port}${config.path}`);
 }
