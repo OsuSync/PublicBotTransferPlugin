@@ -35,7 +35,7 @@ function loadConfig() {
 
 function socketVerify(info,config) {
     let cookie = parseCookie(info.req.headers.cookie);
-    if (cookie.transfer_target_name === undefined)
+    if(cookie.transfer_target_name === undefined)
         return false;
     if(cookie.transfer_target_name.indexOf("#") != -1)
         return false;
@@ -86,7 +86,7 @@ function startServer(config) {
     ircClient.addListener('error', onIrcError);
     //received irc message
     ircClient.addListener('message', function (from, to, message) {
-        var user = onlineUsersForUsername.get(from);
+        let user = onlineUsersForUsername.get(from);
         if(from === config.ircBotName){
             console.log(`[IRC] Received message from self, Message: ${message}`);
             return;
