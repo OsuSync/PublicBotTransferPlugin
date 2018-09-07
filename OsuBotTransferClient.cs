@@ -23,6 +23,8 @@ namespace PublicOsuBotTransfer
         public static ConfigurationElement Target_User_Name { get; set; } = "";
         public static ConfigurationElement API_Key { get; set; } = "";
 
+        private static HWID s_hwid = new HWID();
+
         private bool is_connected = false;
 
         private WebSocket web_socket;
@@ -86,8 +88,9 @@ namespace PublicOsuBotTransfer
             web_socket.OnMessage += Web_socket_OnMessage;
             web_socket.OnOpen += Web_socket_OnConnected;
 
-            web_socket.SetCookie(new WebSocketSharp.Net.Cookie("api_key", API_Key));
             web_socket.SetCookie(new WebSocketSharp.Net.Cookie("transfer_target_name", Target_User_Name));
+            web_socket.SetCookie(new WebSocketSharp.Net.Cookie("hwid", s_hwid.HardwareID));
+            web_socket.SetCookie(new WebSocketSharp.Net.Cookie("mac", s_hwid.MAC));
 
             NickName = Target_User_Name;
 

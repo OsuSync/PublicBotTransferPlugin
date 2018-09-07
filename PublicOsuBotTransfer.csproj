@@ -32,6 +32,7 @@
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Core" />
+    <Reference Include="System.Management" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />
@@ -43,12 +44,13 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="HWID.cs" />
     <Compile Include="OsuBotTransferClient.cs" />
     <Compile Include="PublicOsuBotTransferPlugin.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\..\..\Sync\Sync.csproj">
+    <ProjectReference Include="..\..\osuSync\Sync\Sync.csproj">
       <Project>{FBD514C2-2830-479E-B050-D1C383028456}</Project>
       <Name>Sync</Name>
     </ProjectReference>
@@ -57,4 +59,7 @@
     <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <PropertyGroup>
+    <PostBuildEvent>copy /y $(TargetPath) $(SolutionDir)\Sync\bin\$(ConfigurationName)\Plugins</PostBuildEvent>
+  </PropertyGroup>
 </Project>
