@@ -33,23 +33,40 @@ class UsersManager {
                          username TEXT,
                          hwid TEXT,
                          mac TEXT,
-                         banned INTEGER)`);
+                         banned INTEGER,
+                         banned_duration INTEGER,
+                         banned_date INTEGER,
+                         first_login_date INTEGER,
+                         last_login_date INTEGER)`);
     }
 
     async add({ username, mac, hwid }) {
         this.maxId++;
-        await this.db.run(SQL`INSERT INTO Users VALUES(${this.maxId},${username.toLowerCase()},${username},${hwid},${mac},0)`);
+        await this.db.run(SQL`INSERT INTO Users VALUES(
+            ${this.maxId},
+            ${username.toLowerCase()},
+            ${username},
+            ${hwid},
+            ${mac},
+            0,
+            0,
+            0,
+            ${Date.now()},
+            ${Date.now()})`);
     }
 
-    async ban({ username, mac = "", hwid = "" }) {
+    async ban({ username, mac = "", hwid = "" }, bannedDuration) {
         return await this.db.run(SQL`UPDATE Users SET
-            banned = 1
+            banned = 1,
+            banned_duration = ${Math.floor(bannedDuration)},
+            banned_date = ${Date.now()}
         WHERE (username_lower = ${username.toLowerCase()} OR mac = ${mac} OR hwid = ${hwid})`);
     }
 
     async unban(username) {
         return await this.db.run(SQL`UPDATE Users SET
-            banned = 0
+            banned = 0,
+            banned_duration = 0
         WHERE username_lower = ${username.toLowerCase()}`);
     }
 
@@ -75,8 +92,33 @@ class UsersManager {
                                         username_lower = ${username.toLowerCase()},
                                         username = ${username},
                                         mac = ${mac},
-                                        hwid = ${hwid})
+                                        hwid = ${hwid},
+                                        last_login_date = ${Date.now()}
                                     WHERE username = ${username.toLowerCase()} OR mac = ${mac} OR hwid = ${hwid}`);
+    }
+
+    async lastLoginDate({ username, mac, hwid }) {
+        let data = await this.db.get(SQL`SELECT last_login_date FROM Users 
+            WHERE username_lower = ${username.toLowerCase()} 
+                OR mac = ${mac} 
+                OR hwid = ${hwid}`);
+        return data["last_login_date"];
+    }
+
+    async bannedDuration({ username, mac, hwid }) {
+        let data = await this.db.get(SQL`SELECT banned_duration FROM Users 
+            WHERE username_lower = ${username.toLowerCase()} 
+                OR mac = ${mac} 
+                OR hwid = ${hwid}`);
+        return data["banned_duration"];
+    }
+
+    async bannedDate({ username, mac, hwid }) {
+        let data = await this.db.get(SQL`SELECT banned_date FROM Users 
+            WHERE username_lower = ${username.toLowerCase()} 
+                OR mac = ${mac} 
+                OR hwid = ${hwid}`);
+        return data["banned_date"];
     }
 
     async allUsers() {
@@ -274,15 +316,20 @@ function socketVerify(info, config) {
 async function startServer(config) {
     const CONST_HEART_CHECK_FLAG = "\x01\x01HEARTCHECK";
     const CONST_HEART_CHECK_OK_FLAG = "\x01\x02HEARTCHECKOK";
+    const CONST_SYNC_BILIBOARD = "\x01\x03BILLBOARD";
+
     const CONST_HEART_CHECK_TIMEOUT = 30 * 1000;//30s
     const CONST_CLEAR_NO_RESPONSE_USER_TIMER_INTERVAL = 60 * 1000//60s
     const CONST_CLEAR_NO_RESPONSE_USER_DATE_INTERVAL = 30 * 60 * 1000;//30m
+
+    const CONST_BAN_LOGIN_DATE_INTERVAL = 10 * 1000;//10s
+    const CONST_BAN_LOGIN_DURATION = 30 * 1000 * 1000;//30m;
+    const CONST_MAX_BAN_DURATION = Number.MAX_SAFE_INTEGER / 2;
 
     const commandProcessor = new CommandProcessor();
     const onlineUsers = new OnlineUsersManager();
     const usersManager = new UsersManager();
     await usersManager.openDatabase();
-    usersManager.isBanned({ username: 'KedamaOvO' })
 
     let ircClient = new irc.Client('irc.ppy.sh', config.ircBotName, {
         port: 6667,
@@ -349,19 +396,43 @@ async function startServer(config) {
 
             //check was banned
             if (await usersManager.isBanned(user)) {
-                user.websocket.close();
-                return;
+                let bannedDuration = await usersManager.bannedDuration(user);
+                let bannedDate = await usersManager.bannedDate(user);
+                let currentDate = Date.now();
+                if (currentDate > bannedDate + bannedDuration) {
+                    usersManager.unban(user.username);
+                } else {
+                    user.websocket.close();
+                    return;
+                }
             }
 
             //add/update user to database
             if (!await usersManager.exist(user)) {
                 await usersManager.add(user);
             } else {
-                await usersManager.update(users);
+                //If the login interval is too short, ban the user.
+                let lastLoginDate = await usersManager.lastLoginDate(user);
+                let currentDate = Date.now();
+                if (currentDate - lastLoginDate < CONST_BAN_LOGIN_DATE_INTERVAL) {
+                    usersManager.ban(user, CONST_BAN_LOGIN_DURATION);
+                    ircClient.say(user.username, "Your are restricted!")
+                    user.websocket.close();
+                    return;
+                }
+                await usersManager.update(user);
             }
 
-            //add user to onlineUsers
-            onlineUsers.add(user);
+            //Check that the user is online.
+            if (onlineUsers.online(user.username)) {
+                if (wsocket.readyState === wsocket.OPEN)
+                    wsocket.send(`The TargetUsername is connected! Send "!logout" logout the user to ${config.ircBotName}`);
+                wsocket.close();
+                return;
+            } else {
+                //add user to onlineUsers
+                onlineUsers.add(user);
+            }
 
             //received websocket message
             wsocket.on('message', (msg) => {
@@ -405,14 +476,6 @@ async function startServer(config) {
                 ircClient.say(user.username, "Your Sync has disconnected from the server.");
                 console.log(`Online User Count: ${onlineUsers.size}`);
             });
-
-            //Check that the user is online.
-            if (onlineUsers.online(user.username)) {
-                if (wsocket.readyState === wsocket.OPEN)
-                    wsocket.send(`The TargetUsername is connected! Send "!logout" logout the user to ${config.ircBotName}`);
-                wsocket.close();
-                return;
-            }
 
             //send welcomeMessage
             if (config.welcomeMessage != null && config.welcomeMessage != "")
@@ -494,11 +557,13 @@ async function startServer(config) {
         console.info(`Count: ${list.length}`);
     }, 'displayer all users');
 
-    commandProcessor.register('ban', async function (username) {
+    commandProcessor.register('ban', async function (username, minute = 60) {
         let user = onlineUsers.get(username) || { username: username };
 
         if (!await usersManager.isBanned(user)) {
-            await usersManager.ban(user);
+            let duration = (minute === "forever") ? CONST_MAX_BAN_DURATION : minute * 1000 * 1000;
+
+            await usersManager.ban(user, duration);
             ircClient.say(user.username, 'You are banned!');
             if (user.websocket !== undefined) {
                 user.websocket.send('You are banned!');
