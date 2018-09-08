@@ -17,9 +17,10 @@ namespace PublicOsuBotTransfer
         private const string CONST_ACTION_FLAG = "\x0001ACTION ";
         private const string CONST_HEART_CHECK_FLAG = "\x01\x01HEARTCHECK";
         private const string CONST_HEART_CHECK_OK_FLAG = "\x01\x02HEARTCHECKOK";
+        private const string CONST_SYNC_NOTICE = "\x01\x03NOTICE";
         private const int CONST_HEART_CHECK_INTERVAL = 10;
 
-        public static ConfigurationElement ServerPath { get; set; } =  @"wss://osubot.kedamaovo.moe";
+        public static ConfigurationElement ServerPath { get; set; } = @"wss://osubot.kedamaovo.moe";
         public static ConfigurationElement Target_User_Name { get; set; } = "";
         public static ConfigurationElement API_Key { get; set; } = "";
 
@@ -95,7 +96,7 @@ namespace PublicOsuBotTransfer
             NickName = Target_User_Name;
 
             web_socket.ConnectAsync();
-            heart_check_timer=new Timer((_)=>SendHeartCheck(),null,
+            heart_check_timer = new Timer((_) => SendHeartCheck(), null,
                 TimeSpan.FromSeconds(CONST_HEART_CHECK_INTERVAL),
                 TimeSpan.FromSeconds(CONST_HEART_CHECK_INTERVAL));
         }
@@ -104,12 +105,12 @@ namespace PublicOsuBotTransfer
         {
             web_socket.Send(CONST_HEART_CHECK_FLAG);
 
-            heart_check_failed_thread =new Thread(() =>
-            {
-                Thread.Sleep(TimeSpan.FromSeconds(CONST_HEART_CHECK_INTERVAL));
-                StopWork();
-            });
-        } 
+            heart_check_failed_thread = new Thread(() =>
+             {
+                 Thread.Sleep(TimeSpan.FromSeconds(CONST_HEART_CHECK_INTERVAL));
+                 StopWork();
+             });
+        }
 
         private void Web_socket_OnConnected(object sender, EventArgs e)
         {
@@ -129,16 +130,26 @@ namespace PublicOsuBotTransfer
             string nick = Target_User_Name;
             string rawmsg = e.Data;
 
-            IO.CurrentIO.WriteColor($"[OsuBotTransferClient]{e.Data}", ConsoleColor.Cyan);
-            Task.Run(()=>Sync.SyncHost.Instance.Messages.RaiseMessage<ISourceClient>(new DanmakuMessage() {
-                User = nick,
-                Message=rawmsg
-            }));
+
+            if (e.Data.StartsWith(CONST_SYNC_NOTICE))
+            {
+                string notice = e.Data.Replace(CONST_SYNC_NOTICE, "");
+                IO.CurrentIO.WriteColor($"[OsuBotTransferClient][Notice]{notice}", ConsoleColor.Cyan);
+            }
+            else
+            {
+                IO.CurrentIO.WriteColor($"[OsuBotTransferClient]{e.Data}", ConsoleColor.Cyan);
+                Task.Run(() => Sync.SyncHost.Instance.Messages.RaiseMessage<ISourceClient>(new DanmakuMessage()
+                {
+                    User = nick,
+                    Message = rawmsg
+                }));
+            }
         }
 
         private void Web_socket_OnError(object sender, ErrorEventArgs e)
         {
-            IO.CurrentIO.WriteColor($"[OsuBotTransferClient]{e.Message}",ConsoleColor.Red);
+            IO.CurrentIO.WriteColor($"[OsuBotTransferClient]{e.Message}", ConsoleColor.Red);
             is_connected = false;
         }
 
@@ -162,7 +173,7 @@ namespace PublicOsuBotTransfer
                 web_socket.OnMessage -= Web_socket_OnMessage;
                 web_socket.OnOpen -= Web_socket_OnConnected;
             }
-            catch {}
+            catch { }
             finally
             {
                 web_socket = null;

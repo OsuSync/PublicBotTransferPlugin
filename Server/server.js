@@ -316,7 +316,7 @@ function socketVerify(info, config) {
 async function startServer(config) {
     const CONST_HEART_CHECK_FLAG = "\x01\x01HEARTCHECK";
     const CONST_HEART_CHECK_OK_FLAG = "\x01\x02HEARTCHECKOK";
-    const CONST_SYNC_BILIBOARD = "\x01\x03BILLBOARD";
+    const CONST_SYNC_NOTICE = "\x01\x03NOTICE";
 
     const CONST_HEART_CHECK_TIMEOUT = 30 * 1000;//30s
     const CONST_CLEAR_NO_RESPONSE_USER_TIMER_INTERVAL = 60 * 1000//60s
@@ -380,6 +380,10 @@ async function startServer(config) {
     //websocket event
     ws.on('connection',
         async function (wsocket, request) {
+            wsocket.sendNotice = function (msg) {
+                this.send(`${CONST_SYNC_NOTICE}${msg}`);
+            }
+
             let cookie = parseCookie(request.headers.cookie);
             let user = {
                 websocket: wsocket,
@@ -393,7 +397,7 @@ async function startServer(config) {
                 //reset message limit
                 timer: setInterval(() => user.messageCountPerMinute = config.maxMessageCountPerMinute, 1 * 60 * 1000)
             };
-
+            
             //check was banned
             if (await usersManager.isBanned(user)) {
                 let bannedDuration = await usersManager.bannedDuration(user);
@@ -482,9 +486,9 @@ async function startServer(config) {
                 ircClient.say(user.username, config.welcomeMessage);
 
             if (request.headers["botredirectfrom"] !== undefined) {
-                wsocket.send("Your current MikiraSora's PublicBotTransferPlugin server is about to close. Please go to https://github.com/MikiraSora/PublicBotTransferPlugin/releases to download the latest version of the plugin and extract it to the Sync root directory.")
+                wsocket.sendNotice("Your current MikiraSora's PublicBotTransferPlugin server is about to close. Please go to https://github.com/MikiraSora/PublicBotTransferPlugin/releases to download the latest version of the plugin and extract it to the Sync root directory.")
             }
-            wsocket.send(`You can send ${config.maxMessageCountPerMinute} messages per minute`);
+            wsocket.sendNotice(`You can send ${config.maxMessageCountPerMinute} messages per minute`);
 
             console.log(`Online User Count: ${onlineUsers.size}`);
         });
@@ -523,18 +527,26 @@ async function startServer(config) {
         }
     }, CONST_CLEAR_NO_RESPONSE_USER_TIMER_INTERVAL);
 
-    commandProcessor.register('sendtoirc', function (target, msg) {
+    commandProcessor.register('sendtoirc', function (target, message) {
         if (onlineUsers.online(target)) {
-            ircClient.say(target, msg);
+            ircClient.say(target, message);
         } else {
             console.info("[Command] User no connented".inverse);
         }
     }, 'send message to user via irc');
 
-    commandProcessor.register('sendtosync', function (target, msg) {
+    commandProcessor.register('sendtosync', function (target, message, type) {
+        type = type || "notice";
+
         if (onlineUsers.online(target)) {
             let user = onlineUsers.get(target);
-            user.websocket.send(msg);
+            if(type === "notice"){
+                user.websocket.sendNotice(message);
+            }else if(type === "message"){
+                user.websocket.send(message);
+            }else{
+                console.info('[Command] Unknown message type. type should be "message" or "notice".')
+            }
         } else {
             console.info("[Command] User no connented".inverse);
         }
