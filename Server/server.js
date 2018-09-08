@@ -2,29 +2,31 @@ let WebSocketServer = require('ws').Server;
 let irc = require('irc');
 let fs = require('fs')
 let readline = require('readline');
-var events = require('events');
+let events = require('events');
 let sqlite = require('sqlite');
 let SQL = require('sql-template-strings');
-var colors = require("colors")
+let colors = require("colors");
+let Enumerable = require('linq');
+let columnify = require('columnify');
 
-class UsersManager{
-    constructor(){
+class UsersManager {
+    constructor() {
         this.db = null;
         this.maxId = 0;
     }
 
-    async openDatabase(){
-        if(!fs.existsSync('./users.db')){
+    async openDatabase() {
+        if (!fs.existsSync('./users.db')) {
             this.db = await sqlite.open('./users.db');
             await this.createAndInitializeDatabase();
-        }else{
+        } else {
             this.db = await sqlite.open('./users.db');
         }
 
         this.maxId = (await this.db.get(SQL`SELECT MAX(id) FROM Users`))["MAX(id)"] || 0;
     }
 
-    async createAndInitializeDatabase(){
+    async createAndInitializeDatabase() {
         await this.db.run(SQL`CREATE TABLE Users 
                         (id INTEGER RIMARY KEY,
                          username_lower TEXT,
@@ -34,24 +36,24 @@ class UsersManager{
                          banned INTEGER)`);
     }
 
-    async add({username,mac,hwid}){
+    async add({ username, mac, hwid }) {
         this.maxId++;
         await this.db.run(SQL`INSERT INTO Users VALUES(${this.maxId},${username.toLowerCase()},${username},${hwid},${mac},0)`);
     }
 
-    async ban({username,mac="",hwid=""}){
+    async ban({ username, mac = "", hwid = "" }) {
         return await this.db.run(SQL`UPDATE Users SET
             banned = 1
         WHERE (username_lower = ${username.toLowerCase()} OR mac = ${mac} OR hwid = ${hwid})`);
     }
 
-    async unban(username){
+    async unban(username) {
         return await this.db.run(SQL`UPDATE Users SET
             banned = 0
         WHERE username_lower = ${username.toLowerCase()}`);
     }
 
-    async exist({username,mac,hwid}){
+    async exist({ username, mac, hwid }) {
         let data = await this.db.get(SQL`SELECT COUNT(*) FROM Users 
             WHERE username_lower = ${username.toLowerCase()} 
                 OR mac = ${mac} 
@@ -59,7 +61,7 @@ class UsersManager{
         return data["COUNT(*)"] !== 0;
     }
 
-    async isBanned({username,mac = "",hwid = ""}){
+    async isBanned({ username, mac = "", hwid = "" }) {
         let data = await this.db.get(SQL`SELECT COUNT(*) FROM Users 
             WHERE (username_lower = ${username.toLowerCase()} 
                 OR mac = ${mac} 
@@ -68,7 +70,7 @@ class UsersManager{
         return data["COUNT(*)"] !== 0;
     }
 
-    async update({username,mac,hwid}){
+    async update({ username, mac, hwid }) {
         return await this.db.run(SQL`UPDATE Users SET
                                         username_lower = ${username.toLowerCase()},
                                         username = ${username},
@@ -77,44 +79,44 @@ class UsersManager{
                                     WHERE username = ${username.toLowerCase()} OR mac = ${mac} OR hwid = ${hwid}`);
     }
 
-    async allUsers(){
+    async allUsers() {
         let data = await this.db.all(SQL`SELECT username FROM Users`);
         return data;
     }
 }
 
-class OnlineUsersManager{
-    constructor(){
+class OnlineUsersManager {
+    constructor() {
         this.mapOnlineUsers = new Map();
         this.mapOnlineUsersForUsername = new Map();
 
         this.onlineUsersList = [];
     }
 
-    add(user){
-        if(!this.online(user.username)){
+    add(user) {
+        if (!this.online(user.username)) {
             let lower = user.username.toLowerCase();
-            this.mapOnlineUsersForUsername.set(lower,user);
-            this.mapOnlineUsers.set(user.websocket,user);
+            this.mapOnlineUsersForUsername.set(lower, user);
+            this.mapOnlineUsers.set(user.websocket, user);
             this.onlineUsersList.push(user);
         }
     }
 
-    get(key){
+    get(key) {
         let user = null;
-        if(typeof(key) === "string"){
+        if (typeof (key) === "string") {
             user = this.mapOnlineUsersForUsername.get(key.toLowerCase());
-        }else{
+        } else {
             user = this.mapOnlineUsers.get(key);
         }
         return user;
     }
 
-    remove(key){
+    remove(key) {
         let user = this.get(key);
-        if(user !== undefined){
+        if (user !== undefined) {
             let index = this.onlineUsersList.indexOf(user);
-            this.onlineUsersList.splice(index,1);
+            this.onlineUsersList.splice(index, 1);
 
             let lower = user.username.toLowerCase();
             this.mapOnlineUsersForUsername.delete(lower);
@@ -122,29 +124,24 @@ class OnlineUsersManager{
         }
     }
 
-    forEach(cb){
-        for(let user of this.onlineUsersList)
-            cb(user);
-    }
-
-    online(key){
+    online(key) {
         let user = this.get(key);
-        if(user !== undefined)
+        if (user !== undefined)
             return true;
         return false;
     }
 
-    get list(){
+    get list() {
         return this.onlineUsersList;
     }
 
-    get size(){
+    get size() {
         return this.onlineUsersList.length;
     }
 }
 
-class CommandProcessor extends events.EventEmitter{
-    constructor(){
+class CommandProcessor extends events.EventEmitter {
+    constructor() {
         super();
         this.rl = readline.createInterface({
             input: process.stdin,
@@ -158,48 +155,59 @@ class CommandProcessor extends events.EventEmitter{
                 process.emit("SIGINT");
             });
         }
-    
+
         process.on("SIGINT", function () {
             this.emit('exit');
             process.exit();
         })
 
         this.start();
-        this.register('help',()=>{
+        this.register('help', () => {
             this.printHelp();
-        },'display help meesage');
+        }, 'display help meesage');
     }
 
-    register(command,func,helpMsg){
-        this.map.set(command,{
+    register(command, func, helpMsg) {
+        this.map.set(command, {
             func: func,
             helpMsg: helpMsg,
             arguments: this.getArguments(func)
         });
     }
 
-    printHelp(){
-        this.map.forEach((v,k)=>{
-            console.info(`${k} ${v.arguments.join(' ')} \t\t- ${v.helpMsg}`);
+    printHelp() {
+        let data = [];
+        this.map.forEach((v, k) => {
+            data.push({
+                command: `${k} ${v.arguments.join(' ')}`,
+                description: v.helpMsg
+            });
         });
+        console.info(columnify(data, {
+            minWidth: 40,
+            columnSplitter: ' | ',
+            headingTransform: function (heading) {
+                return heading.toUpperCase().green;
+            }
+        }));
     }
 
-    start(){
+    start() {
         this.rl.on('line', (line) => {
             let breaked = line.split(' ');
             let cmd = this.map.get(breaked[0]);
-            if(cmd !== undefined){
-                breaked.splice(0,1);
+            if (cmd !== undefined) {
+                breaked.splice(0, 1);
                 cmd.func(...breaked);
-            }else{
+            } else {
                 console.info(`No found '${breaked[0]}' command`.inverse);
                 this.printHelp();
             }
         });
     }
 
-    getArguments(fn){
-        return /\((\w[0-9A-za-z]*,?)*\)/.exec(fn.toString())[0].replace(/(\(|\))/g,'').replace(/,/g,' ').split(' ');
+    getArguments(fn) {
+        return /\((\s*\w[0-9A-za-z]*\s*,?\s*)*\)/.exec(fn.toString())[0].replace(/(\(|\)|\s)/g, '').replace(/,/g, ' ').split(' ');
     }
 }
 
@@ -259,7 +267,7 @@ function socketVerify(info, config) {
 
     if (cookie.transfer_target_name.toLowerCase() === config.ircBotName.toLowerCase())
         return false;
-    
+
     return true;
 }
 
@@ -274,7 +282,7 @@ async function startServer(config) {
     const onlineUsers = new OnlineUsersManager();
     const usersManager = new UsersManager();
     await usersManager.openDatabase();
-    usersManager.isBanned({username: 'KedamaOvO'})
+    usersManager.isBanned({ username: 'KedamaOvO' })
 
     let ircClient = new irc.Client('irc.ppy.sh', config.ircBotName, {
         port: 6667,
@@ -286,7 +294,7 @@ async function startServer(config) {
     let ws = new WebSocketServer({
         port: config.port,
         noServer: true,
-        verifyClient: (info) => socketVerify(info, config,usersManager),
+        verifyClient: (info) => socketVerify(info, config, usersManager),
         path: config.path
     });
 
@@ -340,10 +348,20 @@ async function startServer(config) {
             };
 
             //check was banned
-            if(await usersManager.isBanned(user)){
+            if (await usersManager.isBanned(user)) {
                 user.websocket.close();
                 return;
             }
+
+            //add/update user to database
+            if (!await usersManager.exist(user)) {
+                await usersManager.add(user);
+            } else {
+                await usersManager.update(users);
+            }
+
+            //add user to onlineUsers
+            onlineUsers.add(user);
 
             //received websocket message
             wsocket.on('message', (msg) => {
@@ -396,14 +414,6 @@ async function startServer(config) {
                 return;
             }
 
-            //add new user to database
-            if(!await usersManager.exist(user)){
-                await usersManager.add(user);
-            }
-
-            //add user to onlineUsers set
-            onlineUsers.add(user);
-
             //send welcomeMessage
             if (config.welcomeMessage != null && config.welcomeMessage != "")
                 ircClient.say(user.username, config.welcomeMessage);
@@ -438,82 +448,76 @@ async function startServer(config) {
     //Regular cleaning
     setInterval(function () {
         let date = new Date();
-        let list = [];
-        onlineUsers.list.forEach(user => {
-            if (date - user.lastSendTime > CONST_CLEAR_NO_RESPONSE_USER_DATE_INTERVAL) {
-                list.push(user);
-            }
-        });
-
-        let str = "Clear Users: ";
-
-        for (let user of list) {
-            str += `${user.username}\t`;
+        let list = Enumerable.from(onlineUsers.list).where(user => date - user.lastSendTime > CONST_CLEAR_NO_RESPONSE_USER_DATE_INTERVAL);
+        list.forEach((user, i) => {
             user.websocket.close();
+        })
+        if (list.count() !== 0) {
+            console.info('----------Clear Users----------');
+            console.log(`: ${list.select(u => user.username).toJoinedString('\t')}`);
+            console.info('-------------------------------');
+            console.info(`Count: ${list.count()}`);
         }
-        if (list.length !== 0)
-            console.log(str);
     }, CONST_CLEAR_NO_RESPONSE_USER_TIMER_INTERVAL);
 
-    commandProcessor.register('sendtoirc',function(target,msg){
+    commandProcessor.register('sendtoirc', function (target, msg) {
         if (onlineUsers.online(target)) {
             ircClient.say(target, msg);
         } else {
             console.info("[Command] User no connented".inverse);
         }
-    },'send message to user via irc');
+    }, 'send message to user via irc');
 
-    commandProcessor.register('sendtosync',function(target,msg){
+    commandProcessor.register('sendtosync', function (target, msg) {
         if (onlineUsers.online(target)) {
             let user = onlineUsers.get(target);
             user.websocket.send(msg);
         } else {
             console.info("[Command] User no connented".inverse);
         }
-    },'send message to user via sync');
+    }, 'send message to user via sync');
 
-    commandProcessor.register('onlineusers',function(){
-        let str = '';
-        onlineUsers.forEach(user => str += `${user.username}\t`);
+    commandProcessor.register('onlineusers', function () {
+        let str = Enumerable.from(onlineUsers.list).select(u => u.username).toJoinedString('\t');
+        console.info('---------Online Users---------');
         console.info(str);
-        console.info('--------------------------')
+        console.info('------------------------------');
         console.info(`Count: ${onlineUsers.size}`);
-    },'send message to user via sync');
+    }, 'send message to user via sync');
 
-    commandProcessor.register('allusers',async function(){
+    commandProcessor.register('allusers', async function () {
         let list = await usersManager.allUsers();
-        let str = '';
-
-        list.forEach(res => str += `${res["username"]}\t`);
+        let str = Enumerable.from(list).select(u => u.username).toJoinedString('\t');
+        console.info('---------All Users---------');
         console.info(str);
-        console.info('--------------------------')
+        console.info('---------------------------')
         console.info(`Count: ${list.length}`);
-    });
+    }, 'displayer all users');
 
-    commandProcessor.register('ban',async function(username){
+    commandProcessor.register('ban', async function (username) {
         let user = onlineUsers.get(username) || { username: username };
 
-        if(!await usersManager.isBanned(user)){
+        if (!await usersManager.isBanned(user)) {
             await usersManager.ban(user);
-            ircClient.say(user.username,'You are banned!');
-            if(user.websocket !== undefined){
+            ircClient.say(user.username, 'You are banned!');
+            if (user.websocket !== undefined) {
                 user.websocket.send('You are banned!');
                 user.websocket.close();
             }
-        }else{
+        } else {
             console.info(`${user.username} was banned!`);
         }
-    },'ban');
+    }, 'ban a user');
 
-    commandProcessor.register('unban',async function(username){
-        if(await usersManager.isBanned({username:username})){
+    commandProcessor.register('unban', async function (username) {
+        if (await usersManager.isBanned({ username: username })) {
             await usersManager.unban(username);
-        }else{
+        } else {
             console.info(`${user.username} wasn't banned!`);
         }
-    });
+    }, 'unbban a user');
 
-    commandProcessor.on('exit',function(){
+    commandProcessor.on('exit', function () {
         onlineUsers.forEach(user => {
             user.websocket.send("The server is down.");
             user.websocket.close();
