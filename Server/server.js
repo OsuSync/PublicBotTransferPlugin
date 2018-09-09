@@ -94,7 +94,7 @@ class UsersManager {
                                         mac = ${mac},
                                         hwid = ${hwid},
                                         last_login_date = ${Date.now()}
-                                    WHERE username = ${username.toLowerCase()} OR mac = ${mac} OR hwid = ${hwid}`);
+                                    WHERE username_lower = ${username.toLowerCase()} OR mac = ${mac} OR hwid = ${hwid}`);
     }
 
     async lastLoginDate({ username, mac, hwid }) {
