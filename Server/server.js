@@ -1,18 +1,19 @@
-let WebSocketServer = require('ws').Server;
-let irc = require('irc');
-let fs = require('fs')
-let readline = require('readline');
-let events = require('events');
-let sqlite = require('sqlite');
-let SQL = require('sql-template-strings');
-let colors = require("colors");
-let Enumerable = require('linq');
-let columnify = require('columnify');
+const WebSocket = require('ws');
+const WebSocketServer = WebSocket.Server;
+const irc = require('irc');
+const fs = require('fs')
+const readline = require('readline');
+const events = require('events');
+const sqlite = require('sqlite');
+const SQL = require('sql-template-strings');
+const colors = require("colors");
+const Enumerable = require('linq');
+const columnify = require('columnify');
+const https = require('https')
 
 class UsersManager {
     constructor() {
         this.db = null;
-        this.maxId = 0;
     }
 
     async openDatabase() {
@@ -22,15 +23,12 @@ class UsersManager {
         } else {
             this.db = await sqlite.open('./users.db');
         }
-
-        this.maxId = (await this.db.get(SQL`SELECT MAX(id) FROM Users`))["MAX(id)"] || 0;
     }
 
     async createAndInitializeDatabase() {
         await this.db.run(SQL`CREATE TABLE Users 
-                        (id INTEGER RIMARY KEY,
-                         username_lower TEXT,
-                         username TEXT,
+                        (uid INTEGER PRIMARY KEY,
+                         username TEXT COLLATE NOCASE,
                          hwid TEXT,
                          mac TEXT,
                          banned INTEGER,
@@ -40,11 +38,9 @@ class UsersManager {
                          last_login_date INTEGER)`);
     }
 
-    async add({ username, mac, hwid }) {
-        this.maxId++;
+    async add({ uid, username, mac, hwid }) {
         await this.db.run(SQL`INSERT INTO Users VALUES(
-            ${this.maxId},
-            ${username.toLowerCase()},
+            ${uid},
             ${username},
             ${hwid},
             ${mac},
@@ -55,75 +51,94 @@ class UsersManager {
             ${Date.now()})`);
     }
 
-    async ban({ username, mac = "", hwid = "" }, bannedDuration) {
+    async ban({ uid, mac = "", hwid = "" }, bannedDuration) {
         return await this.db.run(SQL`UPDATE Users SET
             banned = 1,
             banned_duration = ${Math.floor(bannedDuration)},
             banned_date = ${Date.now()}
-        WHERE (username_lower = ${username.toLowerCase()} OR mac = ${mac} OR hwid = ${hwid})`);
+        WHERE (uid = ${uid} OR mac = ${mac} OR hwid = ${hwid})`);
     }
 
-    async unban(username) {
+    async unban({ uid }) {
         return await this.db.run(SQL`UPDATE Users SET
             banned = 0,
             banned_duration = 0
-        WHERE username_lower = ${username.toLowerCase()}`);
+        WHERE uid = ${uid}`);
     }
 
-    async exist({ username, mac, hwid }) {
-        let data = await this.db.get(SQL`SELECT COUNT(*) FROM Users 
-            WHERE username_lower = ${username.toLowerCase()} 
+    async exist({ uid, mac, hwid }) {
+        const data = await this.db.get(SQL`SELECT COUNT(*) FROM Users 
+            WHERE uid = ${uid}
                 OR mac = ${mac} 
                 OR hwid = ${hwid}`);
         return data["COUNT(*)"] !== 0;
     }
 
-    async isBanned({ username, mac = "", hwid = "" }) {
-        let data = await this.db.get(SQL`SELECT COUNT(*) FROM Users 
-            WHERE (username_lower = ${username.toLowerCase()} 
+    async isBanned({ uid, mac = "", hwid = "" }) {
+        const data = await this.db.get(SQL`SELECT COUNT(*) FROM Users 
+            WHERE (uid = ${uid}
                 OR mac = ${mac} 
                 OR hwid = ${hwid})
                 AND banned = 1`);
         return data["COUNT(*)"] !== 0;
     }
 
-    async update({ username, mac, hwid }) {
+    async update({ uid, username, mac, hwid }) {
         return await this.db.run(SQL`UPDATE Users SET
-                                        username_lower = ${username.toLowerCase()},
                                         username = ${username},
                                         mac = ${mac},
                                         hwid = ${hwid},
                                         last_login_date = ${Date.now()}
-                                    WHERE username_lower = ${username.toLowerCase()} OR mac = ${mac} OR hwid = ${hwid}`);
+                                    WHERE uid = ${uid} OR mac = ${mac} OR hwid = ${hwid}`);
     }
 
-    async lastLoginDate({ username, mac, hwid }) {
-        let data = await this.db.get(SQL`SELECT last_login_date FROM Users 
-            WHERE username_lower = ${username.toLowerCase()} 
+    async lastLoginDate({ uid, mac, hwid }) {
+        const data = await this.db.get(SQL`SELECT last_login_date FROM Users 
+            WHERE uid = ${uid} 
                 OR mac = ${mac} 
                 OR hwid = ${hwid}`);
         return data["last_login_date"];
     }
 
-    async bannedDuration({ username, mac, hwid }) {
-        let data = await this.db.get(SQL`SELECT banned_duration FROM Users 
-            WHERE username_lower = ${username.toLowerCase()} 
+    async bannedDuration({ uid, mac, hwid }) {
+        const data = await this.db.get(SQL`SELECT banned_duration FROM Users 
+            WHERE uid = ${uid} 
                 OR mac = ${mac} 
                 OR hwid = ${hwid}`);
         return data["banned_duration"];
     }
 
-    async bannedDate({ username, mac, hwid }) {
-        let data = await this.db.get(SQL`SELECT banned_date FROM Users 
-            WHERE username_lower = ${username.toLowerCase()} 
+    async bannedDate({ uid, mac, hwid }) {
+        const data = await this.db.get(SQL`SELECT banned_date FROM Users 
+            WHERE uid = ${uid} 
                 OR mac = ${mac} 
                 OR hwid = ${hwid}`);
         return data["banned_date"];
     }
 
     async allUsers() {
-        let data = await this.db.all(SQL`SELECT username FROM Users`);
+        const data = await this.db.all(SQL`SELECT username FROM Users`);
         return data;
+    }
+
+    async getUid(username){
+        const data = await this.db.get(SQL`SELECT uid FROM Users WHERE username = ${username}`);
+        if(data === undefined)
+            return undefined;
+        return data["uid"];
+    }
+
+    async getUidFromOsu(username) {
+        return new Promise(function (resolve) {
+            https.get(`https://osu.ppy.sh/u/${username}`, (res) => {
+                if (res.statusCode == 302 && res.headers.location !== undefined) {
+                    const uid = res.headers.location.match(/\d+/g)[0];
+                    resolve(Number.parseInt(uid));
+                    return;
+                }
+                resolve(undefined);
+            })
+        });
     }
 }
 
@@ -377,17 +392,25 @@ async function startServer(config) {
             ircClient.oldSay(nick, msg);
     };
 
+    WebSocket.prototype.sendNotice = function (msg) {
+        this.send(`${CONST_SYNC_NOTICE_HEADER}${msg}`);
+    }
+
     //websocket event
     ws.on('connection',
         async function (wsocket, request) {
-            wsocket.sendNotice = function (msg) {
-                this.send(`${CONST_SYNC_NOTICE}${msg}`);
+            let cookie = parseCookie(request.headers.cookie);
+            const username = cookie.transfer_target_name;
+            const uid = (await usersManager.getUid(username)) || (await usersManager.getUidFromOsu(username));
+            if (uid === -1) {
+                wsocket.close();
+                return;
             }
 
-            let cookie = parseCookie(request.headers.cookie);
             let user = {
+                uid: uid,
                 websocket: wsocket,
-                username: cookie.transfer_target_name,
+                username: username,
                 mac: cookie.mac,
                 hwid: cookie.hwid,
                 heartChecker: null,
@@ -397,14 +420,16 @@ async function startServer(config) {
                 //reset message limit
                 timer: setInterval(() => user.messageCountPerMinute = config.maxMessageCountPerMinute, 1 * 60 * 1000)
             };
-            
+
+
+
             //check was banned
             if (await usersManager.isBanned(user)) {
                 let bannedDuration = await usersManager.bannedDuration(user);
                 let bannedDate = await usersManager.bannedDate(user);
                 let currentDate = Date.now();
                 if (currentDate > bannedDate + bannedDuration) {
-                    usersManager.unban(user.username);
+                    usersManager.unban(user);
                 } else {
                     user.websocket.close();
                     return;
@@ -540,11 +565,11 @@ async function startServer(config) {
 
         if (onlineUsers.online(target)) {
             let user = onlineUsers.get(target);
-            if(type === "notice"){
+            if (type === "notice") {
                 user.websocket.sendNotice(message);
-            }else if(type === "message"){
+            } else if (type === "message") {
                 user.websocket.send(message);
-            }else{
+            } else {
                 console.info('[Command] Unknown message type. type should be "message" or "notice".')
             }
         } else {
@@ -587,10 +612,12 @@ async function startServer(config) {
     }, 'ban a user');
 
     commandProcessor.register('unban', async function (username) {
-        if (await usersManager.isBanned({ username: username })) {
-            await usersManager.unban(username);
+        const uid = await usersManager.getUid(username);
+        const user = { uid: uid };
+        if (await usersManager.isBanned(user)) {
+            await usersManager.unban(user);
         } else {
-            console.info(`${user.username} wasn't banned!`);
+            console.info(`${username} wasn't banned!`);
         }
     }, 'unbban a user');
 
