@@ -9,7 +9,8 @@ const SQL = require('sql-template-strings');
 const colors = require("colors");
 const Enumerable = require('linq');
 const columnify = require('columnify');
-const https = require('https')
+const https = require('https');
+const md5 = require('md5');
 
 class UsersManager {
     constructor() {
@@ -328,6 +329,25 @@ function socketVerify(info, config) {
     return true;
 }
 
+async function userLoginVerify(user,usersManager){
+    if (user.uid === undefined)
+        return false;
+
+    //check was banned
+    if (await usersManager.isBanned(user)) {
+        const bannedDuration = await usersManager.bannedDuration(user);
+        const bannedDate = await usersManager.bannedDate(user);
+        const currentDate = Date.now();
+        if (currentDate > bannedDate + bannedDuration) {
+            usersManager.unban(user);//time is over, unban.
+        } else {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 async function startServer(config) {
     const CONST_HEART_CHECK_FLAG = "\x01\x01HEARTCHECK";
     const CONST_HEART_CHECK_OK_FLAG = "\x01\x02HEARTCHECKOK";
@@ -402,16 +422,12 @@ async function startServer(config) {
             let cookie = parseCookie(request.headers.cookie);
             const username = cookie.transfer_target_name;
             const uid = (await usersManager.getUid(username)) || (await usersManager.getUidFromOsu(username));
-            if (uid === -1) {
-                wsocket.close();
-                return;
-            }
 
             let user = {
                 uid: uid,
                 websocket: wsocket,
                 username: username,
-                mac: cookie.mac,
+                mac: md5(cookie.mac),
                 hwid: cookie.hwid,
                 heartChecker: null,
                 lastSendTime: new Date(),
@@ -421,19 +437,9 @@ async function startServer(config) {
                 timer: setInterval(() => user.messageCountPerMinute = config.maxMessageCountPerMinute, 1 * 60 * 1000)
             };
 
-
-
-            //check was banned
-            if (await usersManager.isBanned(user)) {
-                let bannedDuration = await usersManager.bannedDuration(user);
-                let bannedDate = await usersManager.bannedDate(user);
-                let currentDate = Date.now();
-                if (currentDate > bannedDate + bannedDuration) {
-                    usersManager.unban(user);
-                } else {
-                    user.websocket.close();
-                    return;
-                }
+            if(!await userLoginVerify(user,usersManager)){
+                user.websocket.close();
+                return;
             }
 
             //add/update user to database

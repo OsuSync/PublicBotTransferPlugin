@@ -47,7 +47,7 @@ namespace PublicOsuBotTransfer
             if (tmp == null)
                 Console.WriteLine("Could not resolve hardware informations...");
 
-            return Convert.ToBase64String(new System.Security.Cryptography.SHA1CryptoServiceProvider().ComputeHash(Encoding.UTF8.GetBytes(tmp)));
+            return Convert.ToBase64String(new System.Security.Cryptography.MD5CryptoServiceProvider().ComputeHash(Encoding.UTF8.GetBytes(tmp)));
         }
 
         public string GetMACAddress()
