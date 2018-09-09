@@ -17,7 +17,7 @@ namespace PublicOsuBotTransfer
         private const string CONST_ACTION_FLAG = "\x0001ACTION ";
         private const string CONST_HEART_CHECK_FLAG = "\x01\x01HEARTCHECK";
         private const string CONST_HEART_CHECK_OK_FLAG = "\x01\x02HEARTCHECKOK";
-        private const string CONST_SYNC_NOTICE = "\x01\x03NOTICE";
+        private const string CONST_SYNC_NOTICE_HEADER = "\x01\x03\x01";
         private const int CONST_HEART_CHECK_INTERVAL = 10;
 
         public static ConfigurationElement ServerPath { get; set; } = @"wss://osubot.kedamaovo.moe";
@@ -131,9 +131,9 @@ namespace PublicOsuBotTransfer
             string rawmsg = e.Data;
 
 
-            if (e.Data.StartsWith(CONST_SYNC_NOTICE))
+            if (e.Data.StartsWith(CONST_SYNC_NOTICE_HEADER))
             {
-                string notice = e.Data.Replace(CONST_SYNC_NOTICE, "");
+                string notice = e.Data.Substring(CONST_SYNC_NOTICE_HEADER.Length);
                 IO.CurrentIO.WriteColor($"[OsuBotTransferClient][Notice]{notice}", ConsoleColor.Cyan);
             }
             else

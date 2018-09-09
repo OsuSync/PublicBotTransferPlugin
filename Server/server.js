@@ -316,7 +316,7 @@ function socketVerify(info, config) {
 async function startServer(config) {
     const CONST_HEART_CHECK_FLAG = "\x01\x01HEARTCHECK";
     const CONST_HEART_CHECK_OK_FLAG = "\x01\x02HEARTCHECKOK";
-    const CONST_SYNC_NOTICE = "\x01\x03NOTICE";
+    const CONST_SYNC_NOTICE_HEADER = "\x01\x03\x01";
 
     const CONST_HEART_CHECK_TIMEOUT = 30 * 1000;//30s
     const CONST_CLEAR_NO_RESPONSE_USER_TIMER_INTERVAL = 60 * 1000//60s
