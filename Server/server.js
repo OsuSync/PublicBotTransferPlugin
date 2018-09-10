@@ -122,9 +122,9 @@ class UsersManager {
         return data;
     }
 
-    async getUid(username){
+    async getUid(username) {
         const data = await this.db.get(SQL`SELECT uid FROM Users WHERE username = ${username}`);
-        if(data === undefined)
+        if (data === undefined)
             return undefined;
         return data["uid"];
     }
@@ -198,15 +198,13 @@ class OnlineUsersManager {
     }
 }
 
-class CommandProcessor extends events.EventEmitter {
+class CommandLineInputer extends events.EventEmitter {
     constructor() {
         super();
         this.rl = readline.createInterface({
             input: process.stdin,
             output: process.stdout
         });
-
-        this.map = new Map();
 
         if (process.platform === "win32") {
             this.rl.on("SIGINT", function () {
@@ -217,7 +215,32 @@ class CommandProcessor extends events.EventEmitter {
         process.on("SIGINT", function () {
             this.emit('exit');
             process.exit();
-        })
+        });
+
+        this.rl.on('line', (line) => {
+            this.emit('command', line, null);
+        });
+    }
+}
+
+class IrcInputer extends events.EventEmitter {
+    constructor() {
+        super();
+    }
+
+    input(command, user) {
+        const ctx = {
+            user: user
+        }
+        this.emit('command', line, ctx);
+    }
+}
+
+class CommandProcessor {
+    constructor(inputer, outputer) {
+        this.inputer = inputer;
+        this.outputer = outputer;
+        this.map = new Map();
 
         this.start();
         this.register('help', () => {
@@ -233,7 +256,7 @@ class CommandProcessor extends events.EventEmitter {
         });
     }
 
-    printHelp() {
+    printHelp(ctx = null) {
         let data = [];
         this.map.forEach((v, k) => {
             data.push({
@@ -241,7 +264,7 @@ class CommandProcessor extends events.EventEmitter {
                 description: v.helpMsg
             });
         });
-        console.info(columnify(data, {
+        this.outputer.call(ctx, columnify(data, {
             minWidth: 40,
             columnSplitter: ' | ',
             headingTransform: function (heading) {
@@ -251,15 +274,14 @@ class CommandProcessor extends events.EventEmitter {
     }
 
     start() {
-        this.rl.on('line', (line) => {
+        this.inputer.on('command', (line, ctx) => {
             let breaked = line.split(' ');
             let cmd = this.map.get(breaked[0]);
             if (cmd !== undefined) {
                 breaked.splice(0, 1);
-                cmd.func(...breaked);
+                cmd.func.apply(ctx, breaked);
             } else {
-                console.info(`No found '${breaked[0]}' command`.inverse);
-                this.printHelp();
+                this.outputer.call(ctx, `No found '${breaked[0]}' command`.inverse);
             }
         });
     }
@@ -329,7 +351,7 @@ function socketVerify(info, config) {
     return true;
 }
 
-async function userLoginVerify(user,usersManager){
+async function userLoginVerify(user, usersManager) {
     if (user.uid === undefined)
         return false;
 
@@ -361,19 +383,23 @@ async function startServer(config) {
     const CONST_BAN_LOGIN_DURATION = 30 * 1000 * 1000;//30m;
     const CONST_MAX_BAN_DURATION = Number.MAX_SAFE_INTEGER / 2;
 
-    const commandProcessor = new CommandProcessor();
     const onlineUsers = new OnlineUsersManager();
     const usersManager = new UsersManager();
     await usersManager.openDatabase();
 
-    let ircClient = new irc.Client('irc.ppy.sh', config.ircBotName, {
+    const ircClient = new irc.Client('irc.ppy.sh', config.ircBotName, {
         port: 6667,
         autoConnect: true,
         userName: config.ircBotName,
         password: config.ircBotPassword
     });
 
-    let ws = new WebSocketServer({
+    const commandLineInputer = new CommandLineInputer();
+    const commandProcessor = new CommandProcessor(commandLineInputer, console.info);
+    const ircInputer = new IrcInputer();
+    const ircCommandProcessor = new CommandProcessor(ircInputer, function (msg) { });
+
+    const ws = new WebSocketServer({
         port: config.port,
         noServer: true,
         verifyClient: (info) => socketVerify(info, config, usersManager),
@@ -393,15 +419,15 @@ async function startServer(config) {
 
         if (user === undefined) {
             console.log(`[IRC to Sync] [Not Connected] OsuName: ${from}, Message: ${message}`);
-            ircClient.say(from, "Your Sync isn't connected to the server.");
+            //ircClient.say(from, "Your Sync isn't connected to the server.");
             return;
         }
-        //force disconnect
-        if (message === "!logout") {
-            user.websocket.close();
-            ircClient.say(from, "Logout success!");
+
+        if (message.startsWith('!')) {
+            ircInputer.input(message.substring(1), user);
             return;
         }
+
         onIrcMessage(user, message);
     });
 
@@ -430,16 +456,55 @@ async function startServer(config) {
                 mac: md5(cookie.mac),
                 hwid: cookie.hwid,
                 heartChecker: null,
-                lastSendTime: new Date(),
+                lastSendTime: 0,
                 //message limit
                 messageCountPerMinute: config.maxMessageCountPerMinute,
                 //reset message limit
-                timer: setInterval(() => user.messageCountPerMinute = config.maxMessageCountPerMinute, 1 * 60 * 1000)
+                messageCountTimer: setInterval(() => user.messageCountPerMinute = config.maxMessageCountPerMinute, 1 * 60 * 1000),
+                sendToSync: function (msg, type = "message") {
+                    if (this.websocket === undefined) {
+                        console.error(`${this.username} no websocket!`)
+                        return;
+                    }
+
+                    if (this.websocket.readyState === this.websocket.OPEN) {
+                        console.error(`${this.username}'s websocket isn't open. (state code:${this.websocket.readyState})`)
+                        return;
+                    }
+
+                    const map = {
+                        message: this.websocket.send,
+                        notice: this.websocket.sendNotice
+                    };
+                    const send = map[type];
+
+                    if (send !== undefined) {
+                        send(msg);
+                    } else {
+                        console.warn(`User: ${this.username}, Unknown message type. type should be "message" or "notice"`);
+                    }
+                },
+                sendToIrc: function (msg) {
+                    ircClient.say(this.username, msg);
+                },
+                disconnect: function () {
+                    this.websocket.close();
+                }
             };
 
-            if(!await userLoginVerify(user,usersManager)){
-                user.websocket.close();
+            if (!await userLoginVerify(user, usersManager)) {
+                user.disconnect();
                 return;
+            }
+
+            //Check that the user is online.
+            if (onlineUsers.online(user.username)) {
+                user.sendToSync(`The TargetUsername is connected! Send "!logout" logout the user to ${config.ircBotName}`);
+                user.disconnect();
+                return;
+            } else {
+                //add user to onlineUsers
+                onlineUsers.add(user);
             }
 
             //add/update user to database
@@ -451,35 +516,24 @@ async function startServer(config) {
                 let currentDate = Date.now();
                 if (currentDate - lastLoginDate < CONST_BAN_LOGIN_DATE_INTERVAL) {
                     usersManager.ban(user, CONST_BAN_LOGIN_DURATION);
-                    ircClient.say(user.username, "Your are restricted!")
-                    user.websocket.close();
+                    user.sendToIrc("Your are restricted!")
+                    user.disconnect();
                     return;
                 }
                 await usersManager.update(user);
             }
 
-            //Check that the user is online.
-            if (onlineUsers.online(user.username)) {
-                if (wsocket.readyState === wsocket.OPEN)
-                    wsocket.send(`The TargetUsername is connected! Send "!logout" logout the user to ${config.ircBotName}`);
-                wsocket.close();
-                return;
-            } else {
-                //add user to onlineUsers
-                onlineUsers.add(user);
-            }
-
             //received websocket message
             wsocket.on('message', (msg) => {
                 let user = onlineUsers.get(wsocket)
-                user.lastSendTime = new Date();
+                user.lastSendTime = Date.now();
 
                 //message is heart check
                 if (msg === CONST_HEART_CHECK_FLAG) {
                     //reset heart checker
                     if (user.heartChecker !== null)
                         clearTimeout(user.heartChecker);
-                    user.heartChecker = setTimeout(() => wsocket.close(), CONST_HEART_CHECK_TIMEOUT);
+                    user.heartChecker = setTimeout(() => user.disconnect(), CONST_HEART_CHECK_TIMEOUT);
 
                     if (wsocket.readyState === wsocket.OPEN)
                         wsocket.send(CONST_HEART_CHECK_OK_FLAG);
@@ -488,8 +542,8 @@ async function startServer(config) {
                 }
 
                 if (user.messageCountPerMinute === 0) {
-                    user.websocket.send("Send too often, please try again later.");
-                    user.websocket.send("Not suggest user who are streamer with lots of viewer because it's may made osu!irc bot spam and be punished by Bancho");
+                    user.sendToSync("Send too often, please try again later.");
+                    user.sendToSync("Not suggest user who are streamer with lots of viewer because it's may made osu!irc bot spam and be punished by Bancho");
                     return;
                 }
                 user.messageCountPerMinute--;
@@ -508,26 +562,25 @@ async function startServer(config) {
                 clearInterval(user.timer);
                 onlineUsers.remove(wsocket);
 
-                ircClient.say(user.username, "Your Sync has disconnected from the server.");
+                user.sendToIrc("Your Sync has disconnected from the server.");
                 console.log(`Online User Count: ${onlineUsers.size}`);
             });
 
             //send welcomeMessage
             if (config.welcomeMessage != null && config.welcomeMessage != "")
-                ircClient.say(user.username, config.welcomeMessage);
+                user.sendToIrc(config.welcomeMessage);
 
             if (request.headers["botredirectfrom"] !== undefined) {
-                wsocket.sendNotice("Your current MikiraSora's PublicBotTransferPlugin server is about to close. Please go to https://github.com/MikiraSora/PublicBotTransferPlugin/releases to download the latest version of the plugin and extract it to the Sync root directory.")
+                user.sendToSync("Your current MikiraSora's PublicBotTransferPlugin server is about to close. Please go to https://github.com/MikiraSora/PublicBotTransferPlugin/releases to download the latest version of the plugin and extract it to the Sync root directory.", 'notice');
             }
-            wsocket.sendNotice(`You can send ${config.maxMessageCountPerMinute} messages per minute`);
+            user.sendToSync(`You can send ${config.maxMessageCountPerMinute} messages per minute`, 'notice');
 
             console.log(`Online User Count: ${onlineUsers.size}`);
         });
 
     function onIrcMessage(user, msg) {
         console.log(`[IRC to Sync] User: ${user.username}, Message: ${msg}`);
-        if (user.websocket.readyState === user.websocket.OPEN)
-            user.websocket.send(msg);
+        user.sendToSync(msg);
     }
 
     function onIrcError(err) {
@@ -536,7 +589,7 @@ async function startServer(config) {
 
     function onWebsocketMessage(user, msg) {
         console.log(`[Sync to IRC] User: ${user.username}, Message: ${msg}`);
-        ircClient.say(user.username, msg);
+        user.sendToIrc(msg);
     }
 
     function onWebsocketError(err) {
@@ -548,7 +601,7 @@ async function startServer(config) {
         let date = new Date();
         let list = Enumerable.from(onlineUsers.list).where(user => date - user.lastSendTime > CONST_CLEAR_NO_RESPONSE_USER_DATE_INTERVAL);
         list.forEach((user, i) => {
-            user.websocket.close();
+            user.disconnect();
         })
         if (list.count() !== 0) {
             console.info('----------Clear Users----------');
@@ -559,8 +612,9 @@ async function startServer(config) {
     }, CONST_CLEAR_NO_RESPONSE_USER_TIMER_INTERVAL);
 
     commandProcessor.register('sendtoirc', function (target, message) {
-        if (onlineUsers.online(target)) {
-            ircClient.say(target, message);
+        const user = onlineUsers.get(target);
+        if (user !== undefined) {
+            user.SendToIrc(message);
         } else {
             console.info("[Command] User no connented".inverse);
         }
@@ -571,13 +625,7 @@ async function startServer(config) {
 
         if (onlineUsers.online(target)) {
             let user = onlineUsers.get(target);
-            if (type === "notice") {
-                user.websocket.sendNotice(message);
-            } else if (type === "message") {
-                user.websocket.send(message);
-            } else {
-                console.info('[Command] Unknown message type. type should be "message" or "notice".')
-            }
+            user.sendToSync(message, type);
         } else {
             console.info("[Command] User no connented".inverse);
         }
@@ -607,11 +655,9 @@ async function startServer(config) {
             let duration = (minute === "forever") ? CONST_MAX_BAN_DURATION : minute * 1000 * 1000;
 
             await usersManager.ban(user, duration);
-            ircClient.say(user.username, 'You are banned!');
-            if (user.websocket !== undefined) {
-                user.websocket.send('You are banned!');
-                user.websocket.close();
-            }
+            user.sendToIrc('You are banned!');
+            user.sendToSync('You are banned!');
+            user.disconnect();
         } else {
             console.info(`${user.username} was banned!`);
         }
@@ -627,12 +673,18 @@ async function startServer(config) {
         }
     }, 'unbban a user');
 
-    commandProcessor.on('exit', function () {
+    commandLineInputer.on('exit', function () {
         onlineUsers.forEach(user => {
             user.websocket.send("The server is down.");
-            user.websocket.close();
+            user.disconnect();
         });
     })
+
+    //irc command
+    ircCommandProcessor.register('logout', function () {
+        this.user.disconnect();
+        this.user.sendToIrc(from, "Logout success!");
+    }, "Disconnect the current user.")
 
     console.log(`Sync Bot Server Start: ws://0.0.0.0:${config.port}${config.path}`);
 }
