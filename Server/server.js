@@ -122,10 +122,16 @@ class UsersManager {
         return data;
     }
 
+    async bannedUsers() {
+        const data = await this.db.all(SQL`SELECT username,banned_duration,banned_date FROM Users WHERE banned = 1`);
+        return data;
+    }
+
+
     async getUid(username) {
         const data = await this.db.get(SQL`SELECT uid FROM Users WHERE username = ${username}`);
         if (data === undefined)
-            return undefined;
+            return await getUidFromOsu(username);
         return data["uid"];
     }
 
@@ -353,7 +359,7 @@ function socketVerify(info, config) {
     if (cookie.transfer_target_name.indexOf("#") != -1)
         return false;
 
-    if (cookie.transfer_target_name.toLowerCase() === config.ircBotName.toLowerCase())
+    if (cookie.transfer_target_name.toLowerCase().replace(/\s/g,'_') === config.ircBotName.toLowerCase().replace(/\s/g,'_'))
         return false;
 
     return true;
@@ -388,7 +394,7 @@ async function startServer(ircServer, config) {
     const CONST_CLEAR_NO_RESPONSE_USER_DATE_INTERVAL = 30 * 60 * 1000;//30m
 
     const CONST_BAN_LOGIN_DATE_INTERVAL = 10 * 1000;//10s
-    const CONST_BAN_LOGIN_DURATION = 30 * 1000 * 1000;//30m;
+    const CONST_BAN_LOGIN_DURATION = 30 * 60 * 1000;//30m;
     const CONST_MAX_BAN_DURATION = Number.MAX_SAFE_INTEGER / 2;
 
     const onlineUsers = new OnlineUsersManager();
@@ -454,8 +460,8 @@ async function startServer(ircServer, config) {
     ws.on('connection',
         async function (wsocket, request) {
             let cookie = parseCookie(request.headers.cookie);
-            const username = cookie.transfer_target_name;
-            const uid = (await usersManager.getUid(username)) || (await usersManager.getUidFromOsu(username));
+            const username = cookie.transfer_target_name.replace(/\s/g,'_');
+            const uid = await usersManager.getUid(username);
             const mac = (cookie.mac !== undefined) ? crypto.createHash('md5').update(cookie.mac).digest('hex') : undefined;
 
             let user = {
@@ -611,14 +617,14 @@ async function startServer(ircServer, config) {
 
     //Regular cleaning
     setInterval(function () {
-        let date = new Date();
-        let list = Enumerable.from(onlineUsers.list).where(user => date - user.lastSendTime > CONST_CLEAR_NO_RESPONSE_USER_DATE_INTERVAL);
+        let date = Date.now();
+        let list = Enumerable.from(onlineUsers.list).where(user => (date - user.lastSendTime) > CONST_CLEAR_NO_RESPONSE_USER_DATE_INTERVAL);
         list.forEach((user, i) => {
             user.disconnect();
         })
         if (list.count() !== 0) {
             console.info('----------Clear Users----------');
-            console.log(`: ${list.select(user => user.username).toJoinedString('\t')}`);
+            console.info(`: ${list.select(user => user.username).toJoinedString('\t')}`);
             console.info('-------------------------------');
             console.info(`Count: ${list.count()}`);
         }
@@ -661,16 +667,34 @@ async function startServer(ircServer, config) {
         console.info(`Count: ${list.length}`);
     }, 'Show all users');
 
+    commandProcessor.register('bannedusers', async function () {
+        let list = await usersManager.bannedUsers();
+        let str = Enumerable.from(list).select(user => ({
+            username: user.username,
+            unbanTime: `${((user.banned_date + user.banned_duration - Date.now()) / 1000 / 60).toFixed(0)} min`
+        })).toArray();
+        console.info('---------Banned Users---------');
+        console.info(columnify(str));
+        console.info('---------------------------')
+        console.info(`Count: ${list.length}`);
+    }, 'Show all banned users');
+
     commandProcessor.register('ban', async function (username, minute = 60) {
-        let user = onlineUsers.get(username) || { username: username };
+        let user = onlineUsers.get(username) ||
+            {
+                uid: await usersManager.getUid(username),
+                username: username
+            };
 
         if (!await usersManager.isBanned(user)) {
-            let duration = (minute === "forever") ? CONST_MAX_BAN_DURATION : minute * 1000 * 1000;
+            let duration = (minute === "forever") ? CONST_MAX_BAN_DURATION : minute * 60 * 1000;
 
             await usersManager.ban(user, duration);
-            user.sendToIrc('You are banned!');
-            user.sendToSync('You are banned!');
-            user.disconnect();
+            if (user.sendToIrc !== undefined) {
+                user.sendToIrc('You are banned!');
+                user.sendToSync('You are banned!');
+                user.disconnect();
+            }
         } else {
             console.info(`${user.username} was banned!`);
         }
