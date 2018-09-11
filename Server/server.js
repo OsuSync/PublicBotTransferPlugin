@@ -10,7 +10,7 @@ const colors = require("colors");
 const Enumerable = require('linq');
 const columnify = require('columnify');
 const https = require('https');
-const md5 = require('md5');
+const md5 = require('crypto').createHash('md5');
 
 class UsersManager {
     constructor() {
@@ -245,7 +245,7 @@ class CommandProcessor {
         this.start();
         this.register('help', () => {
             this.printHelp();
-        }, 'display help meesage');
+        }, 'Show help meesage');
     }
 
     register(command, func, helpMsg) {
@@ -449,12 +449,13 @@ async function startServer(ircServer, config) {
             let cookie = parseCookie(request.headers.cookie);
             const username = cookie.transfer_target_name;
             const uid = (await usersManager.getUid(username)) || (await usersManager.getUidFromOsu(username));
+            const mac = (cookie.mac !== undefined) ? md5.update(cookie.mac).digest('hex') : undefined;
 
             let user = {
                 uid: uid,
                 websocket: wsocket,
                 username: username,
-                mac: md5(cookie.mac),
+                mac: mac,
                 hwid: cookie.hwid,
                 heartChecker: null,
                 lastSendTime: 0,
