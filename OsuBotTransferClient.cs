@@ -159,6 +159,7 @@ namespace PublicOsuBotTransfer
             is_connected = false;
             heart_check_timer?.Dispose();
             heart_check_timer = null;
+            CurrentStatus = SourceStatus.REMOTE_DISCONNECTED;
         }
 
         public override void StopWork()
@@ -177,12 +178,14 @@ namespace PublicOsuBotTransfer
             finally
             {
                 web_socket = null;
+                CurrentStatus = SourceStatus.USER_DISCONNECTED;
             }
         }
 
         public override void SwitchOtherClient()
         {
             StopWork();
+            CurrentStatus = SourceStatus.IDLE;
         }
 
         public override void SwitchThisClient()
