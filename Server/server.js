@@ -292,26 +292,33 @@ class CommandProcessor {
 }
 
 function patchConsole() {
-    let stream = fs.createWriteStream(`${__dirname}/log.log`);
-    let oldLog = console.log;
-    let oldError = console.error;
-    let oldDebug = console.debug;
+    const stream = fs.createWriteStream(`${__dirname}/log.log`);
+    const oldLog = console.log;
+    const oldError = console.error;
+    const oldDebug = console.debug;
+    const oldWarn = console.warn;
 
     console.log = function (msg) {
-        let logStr = `[${new Date().toLocaleTimeString()}] [Log] ${msg}`;
+        const logStr = `[${new Date().toLocaleTimeString()}] [Log] ${msg}`;
         oldLog(logStr.green);
         stream.write(`${logStr}\n`);
     }
 
     console.error = function (msg) {
-        let logStr = `[${new Date().toLocaleTimeString()}] [Error] ${msg}`;
+        const logStr = `[${new Date().toLocaleTimeString()}] [Error] ${msg}`;
         oldError(logStr.red);
         stream.write(`${logStr}\n`);
     }
 
     console.debug = function (msg) {
-        let logStr = `[${new Date().toLocaleTimeString()}] [Debug] ${msg}`;
+        const logStr = `[${new Date().toLocaleTimeString()}] [Debug] ${msg}`;
         oldDebug(logStr);
+        stream.write(`${logStr}\n`);
+    }
+
+    console.warn = function (msg) {
+        const logStr = `[${new Date().toLocaleTimeString()}] [Warn] ${msg}`;
+        oldWarn(logStr.yellow);
         stream.write(`${logStr}\n`);
     }
 }
@@ -586,7 +593,11 @@ async function startServer(ircServer, config) {
     }
 
     function onIrcError(err) {
-        console.error(`[IRC] ${JSON.stringify(err)}`);
+        if(err.command === 'err_nosuchnick'){
+            console.warn(`[IRC] ${JSON.stringify(err)}`);
+        }else{
+            console.error(`[IRC] ${JSON.stringify(err)}`);
+        }
     }
 
     function onWebsocketMessage(user, msg) {
