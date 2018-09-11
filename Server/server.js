@@ -237,7 +237,7 @@ class IrcInputer extends events.EventEmitter {
 }
 
 class CommandProcessor {
-    constructor(inputer, outputer) {
+    constructor(inputer, outputer = () => { }) {
         this.inputer = inputer;
         this.outputer = outputer;
         this.map = new Map();
@@ -337,10 +337,11 @@ function parseCookie(cookie) {
 
 function socketVerify(info, config) {
     let cookie = parseCookie(info.req.headers.cookie);
-    if (cookie.transfer_target_name === undefined ||
-        cookie.mac === undefined ||
-        cookie.hwid === undefined)
+    if (cookie.transfer_target_name === undefined)
         return false;
+
+    // if (cookie.mac === undefined || cookie.hwid === undefined)
+    //     return false;
 
     if (cookie.transfer_target_name.indexOf("#") != -1)
         return false;
@@ -370,7 +371,7 @@ async function userLoginVerify(user, usersManager) {
     return true;
 }
 
-async function startServer(config) {
+async function startServer(ircServer, config) {
     const CONST_HEART_CHECK_FLAG = "\x01\x01HEARTCHECK";
     const CONST_HEART_CHECK_OK_FLAG = "\x01\x02HEARTCHECKOK";
     const CONST_SYNC_NOTICE_HEADER = "\x01\x03\x01";
@@ -387,7 +388,7 @@ async function startServer(config) {
     const usersManager = new UsersManager();
     await usersManager.openDatabase();
 
-    const ircClient = new irc.Client('irc.ppy.sh', config.ircBotName, {
+    const ircClient = new irc.Client(ircServer, config.ircBotName, {
         port: 6667,
         autoConnect: true,
         userName: config.ircBotName,
@@ -397,7 +398,7 @@ async function startServer(config) {
     const commandLineInputer = new CommandLineInputer();
     const commandProcessor = new CommandProcessor(commandLineInputer, console.info);
     const ircInputer = new IrcInputer();
-    const ircCommandProcessor = new CommandProcessor(ircInputer, function (msg) { });
+    const ircCommandProcessor = new CommandProcessor(ircInputer);
 
     const ws = new WebSocketServer({
         port: config.port,
@@ -434,7 +435,7 @@ async function startServer(config) {
     //hook say
     ircClient.oldSay = ircClient.say;
     ircClient.say = function (nick, msg) {
-        if (nick !== config.ircBotName)
+        if (nick.toLowerCase() !== config.ircBotName.toLowerCase())
             ircClient.oldSay(nick, msg);
     };
 
@@ -467,14 +468,14 @@ async function startServer(config) {
                         return;
                     }
 
-                    if (this.websocket.readyState === this.websocket.OPEN) {
+                    if (this.websocket.readyState !== this.websocket.OPEN) {
                         console.error(`${this.username}'s websocket isn't open. (state code:${this.websocket.readyState})`)
                         return;
                     }
 
                     const map = {
-                        message: this.websocket.send,
-                        notice: this.websocket.sendNotice
+                        message: (msg) => this.websocket.send(msg),
+                        notice: (msg) => this.websocket.sendNotice(msg)
                     };
                     const send = map[type];
 
@@ -605,7 +606,7 @@ async function startServer(config) {
         })
         if (list.count() !== 0) {
             console.info('----------Clear Users----------');
-            console.log(`: ${list.select(u => user.username).toJoinedString('\t')}`);
+            console.log(`: ${list.select(user => user.username).toJoinedString('\t')}`);
             console.info('-------------------------------');
             console.info(`Count: ${list.count()}`);
         }
@@ -632,7 +633,7 @@ async function startServer(config) {
     }, 'send message to user via sync');
 
     commandProcessor.register('onlineusers', function () {
-        let str = Enumerable.from(onlineUsers.list).select(u => u.username).toJoinedString('\t');
+        let str = Enumerable.from(onlineUsers.list).select(user => user.username).toJoinedString('\t');
         console.info('---------Online Users---------');
         console.info(str);
         console.info('------------------------------');
@@ -641,7 +642,7 @@ async function startServer(config) {
 
     commandProcessor.register('allusers', async function () {
         let list = await usersManager.allUsers();
-        let str = Enumerable.from(list).select(u => u.username).toJoinedString('\t');
+        let str = Enumerable.from(list).select(user => user.username).toJoinedString('\t');
         console.info('---------All Users---------');
         console.info(str);
         console.info('---------------------------')
@@ -691,4 +692,4 @@ async function startServer(config) {
 
 patchConsole();
 config = loadConfig();
-startServer(config);
+startServer('irc.ppy.sh', config);
