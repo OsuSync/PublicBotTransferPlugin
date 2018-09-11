@@ -70,6 +70,7 @@ namespace PublicOsuBotTransfer
         {
             if (web_socket != null)
                 return;
+            
 
             if (string.IsNullOrWhiteSpace(API_Key))
             {
@@ -114,6 +115,7 @@ namespace PublicOsuBotTransfer
 
         private void Web_socket_OnConnected(object sender, EventArgs e)
         {
+            CurrentStatus = SourceStatus.CONNECTED_WORKING;
             IO.CurrentIO.WriteColor($"[OsuBotTransferClient]成功连接,Enjoy", ConsoleColor.Green);
             SendMessage(new IRCMessage(Target_User_Name.ToString(), $"[OsuBotTransferClient]成功连接,Enjoy"));
             is_connected = true;

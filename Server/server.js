@@ -471,7 +471,7 @@ async function startServer(ircServer, config) {
                 mac: mac,
                 hwid: cookie.hwid,
                 heartChecker: null,
-                lastSendTime: 0,
+                lastSendTime: Date.now(),
                 //message limit
                 messageCountPerMinute: config.maxMessageCountPerMinute,
                 //reset message limit
@@ -624,7 +624,7 @@ async function startServer(ircServer, config) {
         })
         if (list.count() !== 0) {
             console.info('----------Clear Users----------');
-            console.info(`: ${list.select(user => user.username).toJoinedString('\t')}`);
+            console.info(list.select(user => user.username).toJoinedString('\t'));
             console.info('-------------------------------');
             console.info(`Count: ${list.count()}`);
         }
@@ -673,9 +673,9 @@ async function startServer(ircServer, config) {
             username: user.username,
             unbanTime: `${((user.banned_date + user.banned_duration - Date.now()) / 1000 / 60).toFixed(0)} min`
         })).toArray();
-        console.info('---------Banned Users---------');
+        console.info('--------Banned Users--------');
         console.info(columnify(str));
-        console.info('---------------------------')
+        console.info('----------------------------')
         console.info(`Count: ${list.length}`);
     }, 'Show all banned users');
 
