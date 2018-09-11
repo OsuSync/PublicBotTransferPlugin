@@ -228,10 +228,10 @@ class IrcInputer extends events.EventEmitter {
         super();
     }
 
-    input(command, user) {
+    input(line, user) {
         const ctx = {
             user: user
-        }
+        };
         this.emit('command', line, ctx);
     }
 }
@@ -593,9 +593,9 @@ async function startServer(ircServer, config) {
     }
 
     function onIrcError(err) {
-        if(err.command === 'err_nosuchnick'){
+        if (err.command === 'err_nosuchnick') {
             console.warn(`[IRC] ${JSON.stringify(err)}`);
-        }else{
+        } else {
             console.error(`[IRC] ${JSON.stringify(err)}`);
         }
     }
@@ -697,7 +697,7 @@ async function startServer(ircServer, config) {
     //irc command
     ircCommandProcessor.register('logout', function () {
         this.user.disconnect();
-        this.user.sendToIrc(from, "Logout success!");
+        this.user.sendToIrc("Logout success!");
     }, "Disconnect the current user")
 
     console.log(`Sync Bot Server Start: ws://0.0.0.0:${config.port}${config.path}`);
