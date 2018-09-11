@@ -413,7 +413,7 @@ async function startServer(ircServer, config) {
     //received irc message
     ircClient.addListener('message', function (from, to, message) {
         let user = onlineUsers.get(from);
-        if (from === config.ircBotName) {
+        if (from.toLowerCase() === config.ircBotName.toLowerCase()) {
             console.log(`[IRC] Received message from self, Message: ${message}`);
             return;
         }
@@ -619,7 +619,7 @@ async function startServer(ircServer, config) {
         } else {
             console.info("[Command] User no connented".inverse);
         }
-    }, 'send message to user via irc');
+    }, 'Send message to user via irc');
 
     commandProcessor.register('sendtosync', function (target, message, type) {
         type = type || "notice";
@@ -630,7 +630,7 @@ async function startServer(ircServer, config) {
         } else {
             console.info("[Command] User no connented".inverse);
         }
-    }, 'send message to user via sync');
+    }, 'Send message to user via sync');
 
     commandProcessor.register('onlineusers', function () {
         let str = Enumerable.from(onlineUsers.list).select(user => user.username).toJoinedString('\t');
@@ -638,7 +638,7 @@ async function startServer(ircServer, config) {
         console.info(str);
         console.info('------------------------------');
         console.info(`Count: ${onlineUsers.size}`);
-    }, 'send message to user via sync');
+    }, 'Show online users');
 
     commandProcessor.register('allusers', async function () {
         let list = await usersManager.allUsers();
@@ -647,7 +647,7 @@ async function startServer(ircServer, config) {
         console.info(str);
         console.info('---------------------------')
         console.info(`Count: ${list.length}`);
-    }, 'displayer all users');
+    }, 'Show all users');
 
     commandProcessor.register('ban', async function (username, minute = 60) {
         let user = onlineUsers.get(username) || { username: username };
@@ -662,7 +662,7 @@ async function startServer(ircServer, config) {
         } else {
             console.info(`${user.username} was banned!`);
         }
-    }, 'ban a user');
+    }, 'Ban a user');
 
     commandProcessor.register('unban', async function (username) {
         const uid = await usersManager.getUid(username);
@@ -672,8 +672,9 @@ async function startServer(ircServer, config) {
         } else {
             console.info(`${username} wasn't banned!`);
         }
-    }, 'unbban a user');
+    }, 'Unban a user');
 
+    //ctrl + c
     commandLineInputer.on('exit', function () {
         onlineUsers.forEach(user => {
             user.websocket.send("The server is down.");
@@ -685,7 +686,7 @@ async function startServer(ircServer, config) {
     ircCommandProcessor.register('logout', function () {
         this.user.disconnect();
         this.user.sendToIrc(from, "Logout success!");
-    }, "Disconnect the current user.")
+    }, "Disconnect the current user")
 
     console.log(`Sync Bot Server Start: ws://0.0.0.0:${config.port}${config.path}`);
 }
