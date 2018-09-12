@@ -131,7 +131,7 @@ class UsersManager {
     async getUid(username) {
         const data = await this.db.get(SQL`SELECT uid FROM Users WHERE username = ${username}`);
         if (data === undefined)
-            return await getUidFromOsu(username);
+            return await this.getUidFromOsu(username);
         return data["uid"];
     }
 
