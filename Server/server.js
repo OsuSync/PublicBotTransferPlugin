@@ -177,12 +177,12 @@ class OnlineUsersManager {
     }
 
     remove(key) {
-        let user = this.get(key);
+        const user = this.get(key);
         if (user !== undefined) {
-            let index = this.onlineUsersList.indexOf(user);
+            const index = this.onlineUsersList.indexOf(user);
             this.onlineUsersList.splice(index, 1);
 
-            let lower = user.username.toLowerCase();
+            const lower = user.username.toLowerCase();
             this.mapOnlineUsersForUsername.delete(lower);
             this.mapOnlineUsers.delete(user.websocket);
         }
@@ -374,8 +374,8 @@ async function userLoginVerify(user, usersManager) {
         const bannedDuration = await usersManager.bannedDuration(user);
         const bannedDate = await usersManager.bannedDate(user);
         const currentDate = Date.now();
-        if (currentDate > bannedDate + bannedDuration) {
-            usersManager.unban(user);//time is over, unban.
+        if (currentDate > (bannedDate + bannedDuration)) {
+            await usersManager.unban(user);//time is over, unban.
         } else {
             return false;
         }
@@ -394,7 +394,7 @@ async function startServer(ircServer, config) {
     const CONST_CLEAR_NO_RESPONSE_USER_DATE_INTERVAL = 30 * 60 * 1000;//30m
 
     const CONST_BAN_LOGIN_DATE_INTERVAL = 10 * 1000;//10s
-    const CONST_BAN_LOGIN_DURATION = 30 * 60 * 1000;//30m;
+    const CONST_BAN_LOGIN_DURATION = 10 * 60 * 1000;//10m;
     const CONST_MAX_BAN_DURATION = Number.MAX_SAFE_INTEGER / 2;
 
     const onlineUsers = new OnlineUsersManager();
@@ -507,37 +507,6 @@ async function startServer(ircServer, config) {
                 }
             };
 
-            if (!await userLoginVerify(user, usersManager)) {
-                user.disconnect();
-                return;
-            }
-
-            //Check that the user is online.
-            if (onlineUsers.online(user.username)) {
-                user.sendToSync(`The TargetUsername is connected! Send "!logout" logout the user to ${config.ircBotName}`);
-                user.disconnect();
-                return;
-            } else {
-                //add user to onlineUsers
-                onlineUsers.add(user);
-            }
-
-            //add/update user to database
-            if (!await usersManager.exist(user)) {
-                await usersManager.add(user);
-            } else {
-                //If the login interval is too short, ban the user.
-                let lastLoginDate = await usersManager.lastLoginDate(user);
-                let currentDate = Date.now();
-                if (currentDate - lastLoginDate < CONST_BAN_LOGIN_DATE_INTERVAL) {
-                    usersManager.ban(user, CONST_BAN_LOGIN_DURATION);
-                    user.sendToIrc("Your are restricted!")
-                    user.disconnect();
-                    return;
-                }
-                await usersManager.update(user);
-            }
-
             //received websocket message
             wsocket.on('message', (msg) => {
                 let user = onlineUsers.get(wsocket)
@@ -580,6 +549,37 @@ async function startServer(ircServer, config) {
                 user.sendToIrc("Your Sync has disconnected from the server.");
                 console.log(`Online User Count: ${onlineUsers.size}`);
             });
+
+            if (!await userLoginVerify(user, usersManager)) {
+                user.disconnect();
+                return;
+            }
+
+            //Check that the user is online.
+            if (onlineUsers.online(user.username)) {
+                user.sendToSync(`The TargetUsername is connected! Send "!logout" logout the user to ${config.ircBotName}`);
+                user.disconnect();
+                return;
+            } else {
+                //add user to onlineUsers
+                onlineUsers.add(user);
+            }
+
+            //add/update user to database
+            if (!await usersManager.exist(user)) {
+                await usersManager.add(user);
+            } else {
+                //If the login interval is too short, ban the user.
+                let lastLoginDate = await usersManager.lastLoginDate(user);
+                let currentDate = Date.now();
+                if (currentDate - lastLoginDate < CONST_BAN_LOGIN_DATE_INTERVAL) {
+                    usersManager.ban(user, CONST_BAN_LOGIN_DURATION);
+                    user.sendToIrc("Your are restricted!")
+                    user.disconnect();
+                    return;
+                }
+                await usersManager.update(user);
+            }
 
             //send welcomeMessage
             if (config.welcomeMessage != null && config.welcomeMessage != "")
@@ -657,6 +657,15 @@ async function startServer(ircServer, config) {
         console.info('------------------------------');
         console.info(`Count: ${onlineUsers.size}`);
     }, 'Show online users');
+    
+    commandProcessor.register('kick', function (username) {
+        if (onlineUsers.online(username)) {
+            const user = onlineUsers.get(username);
+            user.disconnect();
+        } else {
+            console.info(`${username} don't online.`);
+        }
+    }, 'Disconnect a user.');
 
     commandProcessor.register('allusers', async function () {
         let list = await usersManager.allUsers();
