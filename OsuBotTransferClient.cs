@@ -157,6 +157,8 @@ namespace PublicOsuBotTransfer
 
         private void Web_socket_OnClose(object sender, CloseEventArgs e)
         {
+            if(!string.IsNullOrEmpty(e.Reason))
+                IO.CurrentIO.WriteColor($"[OsuBotTransferClient][Server]{e.Reason}",ConsoleColor.Yellow);
             IO.CurrentIO.WriteColor($"[OsuBotTransferClient]关闭连接", ConsoleColor.Green);
             is_connected = false;
             heart_check_timer?.Dispose();

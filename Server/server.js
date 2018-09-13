@@ -502,8 +502,8 @@ async function startServer(ircServer, config) {
                 sendToIrc: function (msg) {
                     ircClient.say(this.username, msg);
                 },
-                disconnect: function () {
-                    this.websocket.close();
+                disconnect: function (msg,code = 1000) {
+                    this.websocket.close(code,msg);
                 }
             };
 
@@ -551,14 +551,13 @@ async function startServer(ircServer, config) {
             });
 
             if (!await userLoginVerify(user, usersManager)) {
-                user.disconnect();
+                user.disconnect("You are banned!",1008);
                 return;
             }
 
             //Check that the user is online.
             if (onlineUsers.online(user.username)) {
-                user.sendToSync(`The TargetUsername is connected! Send "!logout" logout the user to ${config.ircBotName}`);
-                user.disconnect();
+                user.disconnect(`The TargetUsername is connected! Send "!logout" logout the user to ${config.ircBotName}`);
                 return;
             } else {
                 //add user to onlineUsers
@@ -575,7 +574,7 @@ async function startServer(ircServer, config) {
                 if (currentDate - lastLoginDate < CONST_BAN_LOGIN_DATE_INTERVAL) {
                     usersManager.ban(user, CONST_BAN_LOGIN_DURATION);
                     user.sendToIrc("Your are restricted!")
-                    user.disconnect();
+                    user.disconnect("Your are restricted!",1008);
                     return;
                 }
                 await usersManager.update(user);
@@ -620,7 +619,7 @@ async function startServer(ircServer, config) {
         let date = Date.now();
         let list = Enumerable.from(onlineUsers.list).where(user => (date - user.lastSendTime) > CONST_CLEAR_NO_RESPONSE_USER_DATE_INTERVAL);
         list.forEach((user, i) => {
-            user.disconnect();
+            user.disconnect(`You didn't send any messages within ${CONST_CLEAR_NO_RESPONSE_USER_DATE_INTERVAL / 60 / 1000} minutes, and the server forced you to go offline.`);
         })
         if (list.count() !== 0) {
             console.info('----------Clear Users----------');
@@ -661,7 +660,7 @@ async function startServer(ircServer, config) {
     commandProcessor.register('kick', function (username) {
         if (onlineUsers.online(username)) {
             const user = onlineUsers.get(username);
-            user.disconnect();
+            user.disconnect('You are forced to go offline by the administrator.');
         } else {
             console.info(`${username} don't online.`);
         }
@@ -701,8 +700,7 @@ async function startServer(ircServer, config) {
             await usersManager.ban(user, duration);
             if (user.sendToIrc !== undefined) {
                 user.sendToIrc('You are banned!');
-                user.sendToSync('You are banned!');
-                user.disconnect();
+                user.disconnect('You are banned!',1008);
             }
         } else {
             console.info(`${user.username} was banned!`);
@@ -722,8 +720,7 @@ async function startServer(ircServer, config) {
     //ctrl + c
     commandLineInputer.on('exit', function () {
         onlineUsers.forEach(user => {
-            user.websocket.send("The server is down.");
-            user.disconnect();
+            user.disconnect('The server is down.');
         });
     })
 
