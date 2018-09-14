@@ -632,7 +632,7 @@ async function startServer(ircServer, config) {
     commandProcessor.register('sendtoirc', function (target, message) {
         const user = onlineUsers.get(target);
         if (user !== undefined) {
-            user.SendToIrc(message);
+            user.sendToIrc(message);
         } else {
             console.info("[Command] User no connented".inverse);
         }
