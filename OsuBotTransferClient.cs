@@ -8,6 +8,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Sync.Tools.ConfigurationAttribute;
 using WebSocketSharp;
 
 namespace PublicOsuBotTransfer
@@ -20,6 +21,8 @@ namespace PublicOsuBotTransfer
         private const string CONST_SYNC_NOTICE_HEADER = "\x01\x03\x01";
         private const int CONST_HEART_CHECK_INTERVAL = 10;
 
+        [Bool]
+        public static ConfigurationElement AutoReconnnect { get; set; } = "False";
         public static ConfigurationElement ServerPath { get; set; } = @"wss://osubot.kedamaovo.moe";
         public static ConfigurationElement Target_User_Name { get; set; } = "";
         public static ConfigurationElement API_Key { get; set; } = "";
@@ -164,6 +167,16 @@ namespace PublicOsuBotTransfer
             heart_check_timer?.Dispose();
             heart_check_timer = null;
             CurrentStatus = SourceStatus.REMOTE_DISCONNECTED;
+
+            if (AutoReconnnect == "True")
+            {
+                //restart
+                Task.Run(() =>
+                {
+                    StopWork();
+                    StartWork();
+                });
+            }
         }
 
         public override void StopWork()
