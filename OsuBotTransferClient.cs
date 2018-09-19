@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Sync.Tools.ConfigurationAttribute;
 using WebSocketSharp;
+using Sync.Plugins;
 
 namespace PublicOsuBotTransfer
 {
@@ -74,7 +75,6 @@ namespace PublicOsuBotTransfer
             if (web_socket != null)
                 return;
             
-
             if (string.IsNullOrWhiteSpace(API_Key))
             {
                 IO.CurrentIO.WriteColor($"[OsuBotTransferClient]未钦定配置选项API_Key，请去http://mikirasora.moe/account/api获取Api key并去config.ini填写.", ConsoleColor.Red);
