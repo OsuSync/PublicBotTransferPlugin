@@ -24,6 +24,10 @@ namespace PublicOsuBotTransfer
 
         [Bool]
         public static ConfigurationElement AutoReconnnect { get; set; } = "False";
+
+        [Integer]
+        public static ConfigurationElement AutoReconnectInterval { get; set; } = "10";
+
         public static ConfigurationElement ServerPath { get; set; } = @"wss://osubot.kedamaovo.moe";
         public static ConfigurationElement Target_User_Name { get; set; } = "";
         public static ConfigurationElement API_Key { get; set; } = "";
@@ -174,6 +178,7 @@ namespace PublicOsuBotTransfer
                 Task.Run(() =>
                 {
                     StopWork();
+                    Thread.Sleep(int.Parse(AutoReconnectInterval)*1000);
                     StartWork();
                 });
             }
