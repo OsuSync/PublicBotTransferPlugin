@@ -8,6 +8,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using PublicOsuBotTransfer.Attribute;
 using Sync.Tools.ConfigurationAttribute;
 using WebSocketSharp;
 using Sync.Plugins;
@@ -29,6 +30,8 @@ namespace PublicOsuBotTransfer
         public static ConfigurationElement AutoReconnectInterval { get; set; } = "10";
 
         public static ConfigurationElement ServerPath { get; set; } = @"wss://osubot.kedamaovo.moe";
+
+        [Username]
         public static ConfigurationElement Target_User_Name { get; set; } = "";
         public static ConfigurationElement API_Key { get; set; } = "";
 

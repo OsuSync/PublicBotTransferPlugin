@@ -9,6 +9,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using PublicOsuBotTransfer.Gui;
 using static Sync.Plugins.PluginEvents;
 
 namespace PublicOsuBotTransfer
@@ -77,7 +78,7 @@ namespace PublicOsuBotTransfer
             }
         }
 
-        private bool TryGetUserName(out string user_name)
+        public static bool TryGetUserName(out string user_name)
         {
             user_name = "";
             try
@@ -109,6 +110,11 @@ namespace PublicOsuBotTransfer
 
         public override void OnEnable()
         {
+            Plugin guiPlugin = getHoster().EnumPluings().FirstOrDefault(p => p.Name == "ConfigGUI");
+            if (guiPlugin != null)
+            {
+                GuiRegisterHelper.RegisterCustomItem(guiPlugin);
+            }
         }
 
         public void onConfigurationLoad()
