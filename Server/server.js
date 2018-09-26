@@ -179,6 +179,8 @@ class OnlineUsersManager {
     remove(key) {
         const user = this.get(key);
         if (user !== undefined) {
+            user.deconstructor();
+
             const index = this.onlineUsersList.indexOf(user);
             this.onlineUsersList.splice(index, 1);
 
@@ -359,29 +361,41 @@ function socketVerify(info, config) {
     if (cookie.transfer_target_name.indexOf("#") != -1)
         return false;
 
-    if (cookie.transfer_target_name.toLowerCase().replace(/\s/g,'_') === config.ircBotName.toLowerCase().replace(/\s/g,'_'))
+    if (cookie.transfer_target_name.toLowerCase().replace(/\s/g, '_') === config.ircBotName.toLowerCase().replace(/\s/g, '_'))
         return false;
 
     return true;
 }
 
 async function userLoginVerify(user, usersManager) {
-    if (user.uid === undefined)
-        return false;
+    let result = {
+        result: true,
+        code: 0,
+        reason: undefined
+    }
+
+    if (user.uid === undefined) {//code 1
+        result.result = false;
+        result.code = 1;
+        result.reason = "No found uid from osu.ppy.sh";
+    }
 
     //check was banned
     if (await usersManager.isBanned(user)) {
         const bannedDuration = await usersManager.bannedDuration(user);
         const bannedDate = await usersManager.bannedDate(user);
         const currentDate = Date.now();
+        const time = new Date(bannedDate + bannedDuration - currentDate);
         if (currentDate > (bannedDate + bannedDuration)) {
             await usersManager.unban(user);//time is over, unban.
-        } else {
-            return false;
+        } else {//code 2
+            result.code = 2;
+            result.reason = `Your are restricted! ${time.getMinutes()} minutes ${time.getSeconds()} seconds without restrictions.`;
+            result.result = false;
         }
     }
 
-    return true;
+    return result;
 }
 
 async function startServer(ircServer, config) {
@@ -460,7 +474,7 @@ async function startServer(ircServer, config) {
     ws.on('connection',
         async function (wsocket, request) {
             let cookie = parseCookie(request.headers.cookie);
-            const username = cookie.transfer_target_name.replace(/\s/g,'_');
+            const username = cookie.transfer_target_name.replace(/\s/g, '_');
             const uid = await usersManager.getUid(username);
             const mac = (cookie.mac !== undefined) ? crypto.createHash('md5').update(cookie.mac).digest('hex') : undefined;
 
@@ -502,8 +516,14 @@ async function startServer(ircServer, config) {
                 sendToIrc: function (msg) {
                     ircClient.say(this.username, msg);
                 },
-                disconnect: function (msg,code = 1000) {
-                    this.websocket.close(code,msg);
+                disconnect: function (msg, code = 1000) {
+                    this.websocket.close(code, msg);
+                    onlineUsers.remove(this.websocket);
+                },
+                deconstructor: function () {
+                    if (this.heartChecker !== null)
+                        clearTimeout(this.heartChecker);
+                    clearInterval(this.messageCountTimer);
                 }
             };
 
@@ -541,17 +561,15 @@ async function startServer(ircServer, config) {
                 if (!onlineUsers.online(wsocket)) {
                     return;
                 }
-                if (user.heartChecker !== null)
-                    clearTimeout(user.heartChecker);
-                clearInterval(user.timer);
                 onlineUsers.remove(wsocket);
 
                 user.sendToIrc("Your Sync has disconnected from the server.");
                 console.log(`Online User Count: ${onlineUsers.size}`);
             });
 
-            if (!await userLoginVerify(user, usersManager)) {
-                user.disconnect("You are banned!",1008);
+            const verifyResult = await userLoginVerify(user, usersManager);
+            if (!verifyResult.result) {
+                user.disconnect(verifyResult.reason, 1008);
                 return;
             }
 
@@ -571,10 +589,12 @@ async function startServer(ircServer, config) {
                 //If the login interval is too short, ban the user.
                 let lastLoginDate = await usersManager.lastLoginDate(user);
                 let currentDate = Date.now();
+                const time = new Date(CONST_BAN_LOGIN_DURATION);
+
                 if (currentDate - lastLoginDate < CONST_BAN_LOGIN_DATE_INTERVAL) {
                     usersManager.ban(user, CONST_BAN_LOGIN_DURATION);
-                    user.sendToIrc("Your are restricted!")
-                    user.disconnect("Your are restricted!",1008);
+                    user.sendToIrc(`Your are restricted! ${time.getMinutes()} minutes ${time.getSeconds()} seconds without restrictions.`)
+                    user.disconnect(`Your are restricted! ${time.getMinutes()} minutes ${time.getSeconds()} seconds without restrictions.`, 1008);
                     return;
                 }
                 await usersManager.update(user);
@@ -618,8 +638,10 @@ async function startServer(ircServer, config) {
     setInterval(function () {
         let date = Date.now();
         let list = Enumerable.from(onlineUsers.list).where(user => (date - user.lastSendTime) > CONST_CLEAR_NO_RESPONSE_USER_DATE_INTERVAL);
+        const time = new Date(CONST_CLEAR_NO_RESPONSE_USER_DATE_INTERVAL);
+
         list.forEach((user, i) => {
-            user.disconnect(`You didn't send any messages within ${CONST_CLEAR_NO_RESPONSE_USER_DATE_INTERVAL / 60 / 1000} minutes, and the server forced you to go offline.`);
+            user.disconnect(`You didn't send any messages within ${time.getMinutes()} minutes ${time.getSeconds()} seconds, and the server forced you to go offline.`);
         })
         if (list.count() !== 0) {
             console.info('----------Clear Users----------');
@@ -656,7 +678,7 @@ async function startServer(ircServer, config) {
         console.info('------------------------------');
         console.info(`Count: ${onlineUsers.size}`);
     }, 'Show online users');
-    
+
     commandProcessor.register('kick', function (username) {
         if (onlineUsers.online(username)) {
             const user = onlineUsers.get(username);
@@ -677,14 +699,19 @@ async function startServer(ircServer, config) {
 
     commandProcessor.register('bannedusers', async function () {
         let list = await usersManager.bannedUsers();
-        let str = Enumerable.from(list).select(user => ({
-            username: user.username,
-            unbanTime: `${((user.banned_date + user.banned_duration - Date.now()) / 1000 / 60).toFixed(0)} min`
-        })).toArray();
+        let str = Enumerable.from(list).
+            where(user => user.banned_date + user.banned_duration > Date.now())
+            .select(user => {
+            const time = new Date(user.banned_date + user.banned_duration - Date.now());
+            return {
+                username: user.username,
+                unbanTime: `${time.getMinutes()} Min ${time.getSeconds()} Sec`
+            };
+        }).toArray();
         console.info('--------Banned Users--------');
         console.info(columnify(str));
         console.info('----------------------------')
-        console.info(`Count: ${list.length}`);
+        console.info(`Count: ${str.length}`);
     }, 'Show all banned users');
 
     commandProcessor.register('ban', async function (username, minute = 60) {
@@ -700,7 +727,7 @@ async function startServer(ircServer, config) {
             await usersManager.ban(user, duration);
             if (user.sendToIrc !== undefined) {
                 user.sendToIrc('You are banned!');
-                user.disconnect('You are banned!',1008);
+                user.disconnect('You are banned!', 1008);
             }
         } else {
             console.info(`${user.username} was banned!`);
