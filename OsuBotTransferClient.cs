@@ -33,7 +33,6 @@ namespace PublicOsuBotTransfer
 
         [Username]
         public static ConfigurationElement Target_User_Name { get; set; } = "";
-        public static ConfigurationElement API_Key { get; set; } = "";
 
         private static HWID s_hwid = new HWID();
 
