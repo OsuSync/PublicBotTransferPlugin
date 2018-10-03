@@ -130,9 +130,15 @@ class UsersManager {
 
     async getUid(username) {
         const data = await this.db.get(SQL`SELECT uid FROM Users WHERE username = ${username}`);
-        if (data === undefined)
-            return await this.getUidFromOsu(username);
-        return data["uid"];
+        if (data !== undefined){
+            return data["uid"];
+        }
+        
+        const osuData = await this.getUidFromOsu(username);
+        if(osuData.username.toLowerCase().replace(/\s/g, '_') === username.toLowerCase()){
+            return osuData.uid;
+        }
+        return undefined;
     }
 
     async getUidFromOsu(username) {
@@ -140,10 +146,23 @@ class UsersManager {
             https.get(`https://osu.ppy.sh/u/${username}`, (res) => {
                 if (res.statusCode == 302 && res.headers.location !== undefined) {
                     const uid = res.headers.location.match(/\d+/g)[0];
-                    resolve(Number.parseInt(uid));
-                    return;
+
+                    https.get(res.headers.location, (res) => {
+                        let body = '';
+                        res.on('data', function (chunk) {
+                            body += chunk;
+                        });
+                        res.on('end', function () {
+                            const data = body.match(/"username":"(\s|\w|\[|\])+"/)[0];
+                            const usernameFromOsu = data.split(':')[1].replace(/"/g, '');
+                            resolve({ uid: Number.parseInt(uid), username: usernameFromOsu });
+                        });
+                    });
+                } else {
+                    resolve(undefined);
                 }
-                resolve(undefined);
+                res.resume();
+
             })
         });
     }
@@ -530,6 +549,8 @@ async function startServer(ircServer, config) {
             //received websocket message
             wsocket.on('message', (msg) => {
                 let user = onlineUsers.get(wsocket)
+                if (user === undefined)return;
+
                 user.lastSendTime = Date.now();
 
                 //message is heart check
