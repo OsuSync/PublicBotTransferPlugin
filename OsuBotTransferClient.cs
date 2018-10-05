@@ -1,4 +1,4 @@
-using Sync.Client;
+﻿using Sync.Client;
 using Sync.MessageFilter;
 using Sync.Source;
 using Sync.Tools;
@@ -26,7 +26,7 @@ namespace PublicOsuBotTransfer
         [Bool]
         public static ConfigurationElement AutoReconnnect { get; set; } = "False";
 
-        [Integer]
+        [Integer(MinValue = 10,MaxValue = 180)]
         public static ConfigurationElement AutoReconnectInterval { get; set; } = "10";
 
         public static ConfigurationElement ServerPath { get; set; } = @"wss://osubot.kedamaovo.moe";
@@ -80,12 +80,6 @@ namespace PublicOsuBotTransfer
         {
             if (web_socket != null)
                 return;
-            
-            if (string.IsNullOrWhiteSpace(API_Key))
-            {
-                IO.CurrentIO.WriteColor($"[OsuBotTransferClient]未钦定配置选项API_Key，请去http://mikirasora.moe/account/api获取Api key并去config.ini填写.", ConsoleColor.Red);
-                return;
-            }
 
             if (string.IsNullOrWhiteSpace(Target_User_Name))
             {
