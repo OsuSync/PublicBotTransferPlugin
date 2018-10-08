@@ -34,7 +34,7 @@ namespace PublicOsuBotTransfer
         [Username]
         public static ConfigurationElement Target_User_Name { get; set; } = "";
 
-        private static HWID s_hwid = new HWID();
+        private static HWID s_hwid;
 
         private bool is_connected = false;
 
@@ -76,7 +76,7 @@ namespace PublicOsuBotTransfer
             web_socket.Send($"{message?.Message}");
         }
 
-        public override void StartWork()
+        public override async void StartWork()
         {
             if (web_socket != null)
                 return;
@@ -86,6 +86,9 @@ namespace PublicOsuBotTransfer
                 IO.CurrentIO.WriteColor($"[OsuBotTransferClient]未钦定配置选项Target_User_Name，请去config.ini配置.", ConsoleColor.Red);
                 return;
             }
+
+            if(s_hwid == null)
+                await Task.Run(() => s_hwid = new HWID());
 
             web_socket = new WebSocket(ServerPath);
             web_socket.OnClose += Web_socket_OnClose;
