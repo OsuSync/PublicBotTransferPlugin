@@ -153,9 +153,13 @@ class UsersManager {
                             body += chunk;
                         });
                         res.on('end', function () {
-                            const data = body.match(/"username":"(\s|\w|\[|\])+"/)[0];
-                            const usernameFromOsu = data.split(':')[1].replace(/"/g, '');
-                            resolve({ uid: Number.parseInt(uid), username: usernameFromOsu });
+                            const data = body.match(/"username":"(\s|\w|\[|\])+"/);
+                            if(data != null){
+                                const usernameFromOsu = data[0].split(':')[1].replace(/"/g, '');
+                                resolve({ uid: Number.parseInt(uid), username: usernameFromOsu });
+                            } else {
+                                resolve(undefined);
+                            }
                         });
                     });
                 } else {
