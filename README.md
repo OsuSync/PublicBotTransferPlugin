@@ -1,5 +1,5 @@
 # Public ~~RBQ~~ Osu!IRC bot message transfer plugin
-This Sync plugin able to transfer your message between LiveRoom/SyncPlugin and you.<br/> It need a [API key](http://mikirasora.moe/account/api) for authoriztion.
+This Sync plugin able to transfer your message between LiveRoom/SyncPlugin and you.<br/>
 
 ### Principle/Implement
 
@@ -10,10 +10,14 @@ LiveRoomChat <---> Sync <---> Websocket+PublicOsuBot <---> Osu!IRC
 
 Name|Value Type|Default Value|Decription
 ---|---|---|---
-Target_User_Name|string||User name which you want bot to transfer to|
+Target_User_Name|string||Your OSU! Username|
+AutoReconnect|bool|False|Automatically reconnect after dropping|
+AutoReconnectInterval|Integer|10s|Reconnect repeat the retry interval|
+ServerPath|string|wss://osubot.kedamaovo.moe|IRC Bot Server URL|
+
 
 ### Notice
-This bot **send interval** for all user is 300ms , it will **be automatic to combime messages if bot receive more message**.
+In order not to impose a heavy burden on Bancho, Each OSU user can only receive **30 messages per minute**.
 
 ### Usage
 [Video Tutorial](https://puu.sh/AOACO/056147cb4a.mp4)
