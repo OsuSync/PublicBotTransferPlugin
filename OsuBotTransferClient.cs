@@ -83,7 +83,7 @@ namespace PublicOsuBotTransfer
 
             if (string.IsNullOrWhiteSpace(Target_User_Name))
             {
-                IO.CurrentIO.WriteColor($"[OsuBotTransferClient]未钦定配置选项Target_User_Name，请去config.ini配置.", ConsoleColor.Red);
+                IO.CurrentIO.WriteColor($"[OsuBotTransferClient]Target_User_Name(OSU! Username) is not set，Please set it in 'config.ini', or set through ConfigGUI.", ConsoleColor.Red);
                 return;
             }
 
@@ -122,8 +122,8 @@ namespace PublicOsuBotTransfer
         private void Web_socket_OnConnected(object sender, EventArgs e)
         {
             CurrentStatus = SourceStatus.CONNECTED_WORKING;
-            IO.CurrentIO.WriteColor($"[OsuBotTransferClient]成功连接,Enjoy", ConsoleColor.Green);
-            SendMessage(new IRCMessage(Target_User_Name.ToString(), $"[OsuBotTransferClient]成功连接,Enjoy"));
+            IO.CurrentIO.WriteColor($"[OsuBotTransferClient]Server Connected, Enjoy", ConsoleColor.Green);
+            SendMessage(new IRCMessage(Target_User_Name.ToString(), $"[OsuBotTransferClient]Connected Server, Enjoy"));
             is_connected = true;
         }
 
@@ -165,7 +165,7 @@ namespace PublicOsuBotTransfer
         {
             if(!string.IsNullOrEmpty(e.Reason))
                 IO.CurrentIO.WriteColor($"[OsuBotTransferClient][Server]{e.Reason}",ConsoleColor.Yellow);
-            IO.CurrentIO.WriteColor($"[OsuBotTransferClient]关闭连接", ConsoleColor.Green);
+            IO.CurrentIO.WriteColor($"[OsuBotTransferClient]Disconnected", ConsoleColor.Green);
             is_connected = false;
             heart_check_timer?.Dispose();
             heart_check_timer = null;
