@@ -24,7 +24,7 @@ namespace PublicOsuBotTransfer
         private const int CONST_HEART_CHECK_INTERVAL = 10;
 
         [Bool]
-        public static ConfigurationElement AutoReconnnect { get; set; } = "False";
+        public static ConfigurationElement AutoReconnect { get; set; } = "False";
 
         [Integer(MinValue = 10,MaxValue = 180)]
         public static ConfigurationElement AutoReconnectInterval { get; set; } = "10";
@@ -171,7 +171,7 @@ namespace PublicOsuBotTransfer
             heart_check_timer = null;
             CurrentStatus = SourceStatus.REMOTE_DISCONNECTED;
 
-            if (AutoReconnnect == "True")
+            if (AutoReconnect == "True")
             {
                 //restart
                 Task.Run(() =>
