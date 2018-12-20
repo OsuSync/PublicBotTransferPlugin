@@ -2,8 +2,8 @@
 This Sync plugin able to transfer your message between LiveRoom/SyncPlugin and you.<br/>
 
 ### Principle/Implement
-
-LiveRoomChat <---> Sync <---> Websocket+PublicOsuBot <---> Osu!IRC
+                             Websocket                     IRC
+    LiveRoomChat <-----> Sync <-----> PublicOsuBotServer <-----> Osu!
 
 ### Config in config.ini
 **[PublicOsuBotTransferPlugin.OsuBotTransferClient]** <br/>
