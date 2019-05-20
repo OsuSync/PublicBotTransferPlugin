@@ -17,11 +17,7 @@ namespace PublicOsuBotTransfer
 {
     public class OsuBotTransferClient : DefaultClient, IConfigurable
     {
-        private const string CONST_ACTION_FLAG = "\x0001ACTION ";
-        private const string CONST_HEART_CHECK_FLAG = "\x01\x01HEARTCHECK";
-        private const string CONST_HEART_CHECK_OK_FLAG = "\x01\x02HEARTCHECKOK";
         private const string CONST_SYNC_NOTICE_HEADER = "\x01\x03\x01";
-        private const int CONST_HEART_CHECK_INTERVAL = 10;
 
         [Bool]
         public static ConfigurationElement AutoReconnect { get; set; } = "False";
@@ -34,13 +30,9 @@ namespace PublicOsuBotTransfer
         [Username]
         public static ConfigurationElement Target_User_Name { get; set; } = "";
 
-        private static HWID s_hwid;
-
         private bool is_connected = false;
 
         private WebSocket web_socket;
-        private Timer heart_check_timer;
-        private Thread heart_check_failed_thread;
 
         public OsuBotTransferClient() : base("MikiraSora", "OsuBotTransferClient")
         {
@@ -87,36 +79,18 @@ namespace PublicOsuBotTransfer
                 return;
             }
 
-            if(s_hwid == null)
-                await Task.Run(() => s_hwid = new HWID());
-
             web_socket = new WebSocket(ServerPath);
+
             web_socket.OnClose += Web_socket_OnClose;
             web_socket.OnError += Web_socket_OnError;
             web_socket.OnMessage += Web_socket_OnMessage;
             web_socket.OnOpen += Web_socket_OnConnected;
 
             web_socket.SetCookie(new WebSocketSharp.Net.Cookie("transfer_target_name", Target_User_Name));
-            web_socket.SetCookie(new WebSocketSharp.Net.Cookie("hwid", s_hwid.HardwareID));
-            web_socket.SetCookie(new WebSocketSharp.Net.Cookie("mac", s_hwid.MAC));
 
             NickName = Target_User_Name;
 
             web_socket.ConnectAsync();
-            heart_check_timer = new Timer((_) => SendHeartCheck(), null,
-                TimeSpan.FromSeconds(CONST_HEART_CHECK_INTERVAL),
-                TimeSpan.FromSeconds(CONST_HEART_CHECK_INTERVAL));
-        }
-
-        private void SendHeartCheck()
-        {
-            web_socket.Send(CONST_HEART_CHECK_FLAG);
-
-            heart_check_failed_thread = new Thread(() =>
-             {
-                 Thread.Sleep(TimeSpan.FromSeconds(CONST_HEART_CHECK_INTERVAL));
-                 StopWork();
-             });
         }
 
         private void Web_socket_OnConnected(object sender, EventArgs e)
@@ -129,12 +103,6 @@ namespace PublicOsuBotTransfer
 
         private void Web_socket_OnMessage(object sender, MessageEventArgs e)
         {
-            if (e.Data == CONST_HEART_CHECK_OK_FLAG)
-            {
-                heart_check_failed_thread.Abort();
-                return;
-            }
-
             string nick = Target_User_Name;
             string rawmsg = e.Data;
 
@@ -167,8 +135,6 @@ namespace PublicOsuBotTransfer
                 IO.CurrentIO.WriteColor($"[OsuBotTransferClient][Server]{e.Reason}",ConsoleColor.Yellow);
             IO.CurrentIO.WriteColor($"[OsuBotTransferClient]Disconnected", ConsoleColor.Green);
             is_connected = false;
-            heart_check_timer?.Dispose();
-            heart_check_timer = null;
             CurrentStatus = SourceStatus.REMOTE_DISCONNECTED;
 
             if (AutoReconnect == "True")
