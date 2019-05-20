@@ -234,6 +234,7 @@ func StartWS(name string, b *UserBukkit, irc *irc.Connection, w http.ResponseWri
 	c.bukkit.add <- c
 
 	c.SendNoticeToWS(config.WelcomeMessage)
+	c.SendNoticeToWS(fmt.Sprintf("You can send %d messages per minute", config.MaxMessageCountPerMinute))
 	//c.sendMessageToIrc(config.WelcomeMessage)
 
 	go c.readPumpWS()
