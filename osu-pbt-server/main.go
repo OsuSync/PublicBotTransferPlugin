@@ -97,7 +97,7 @@ func initStdinCommand(cm *CommandManager, bukkit *UserBukkit) {
 
 	cm.AddCallback("kick", func(from string, args []string, o io.Writer) {
 		bukkit.Kick(args[0], "You are taken offline by the administrator.")
-	}, "[username]\t\tBan a user", 1)
+	}, "[username]\t\tLet a user go offline", 1)
 
 	cm.AddCallback("ban", func(from string, args []string, o io.Writer) {
 		u, ok := userManager.GetUserByUsername(args[0])
@@ -154,7 +154,7 @@ func main() {
 		}
 
 		name := strings.Replace(nameCookie.Value, " ", "_", -1)
-		StartWs(name, bukkit, irc, rw, req)
+		StartWS(name, bukkit, irc, rw, req)
 	})
 
 	http.HandleFunc("/is_online", func(rw http.ResponseWriter, req *http.Request) {

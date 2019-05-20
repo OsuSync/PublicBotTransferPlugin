@@ -72,7 +72,7 @@ func (c *Client) SendMessageToIRC(text string) {
 	c.irc.Privmsg(c.user.Username, text)
 }
 
-func (c *Client) readPumpWs() {
+func (c *Client) readPumpWS() {
 	defer func() {
 		c.bukkit.remove <- c
 		c.conn.Close()
@@ -116,7 +116,7 @@ func (c *Client) readPumpWs() {
 	}
 }
 
-func (c *Client) writePumpWs() {
+func (c *Client) writePumpWS() {
 	pingTicker := time.NewTicker(pingPeriod)
 	msgCountClearTicker := time.NewTicker(time.Minute)
 	defer func() {
@@ -189,7 +189,7 @@ func getUser(name string) (*User, bool) {
 	return user, true
 }
 
-func StartWs(name string, b *UserBukkit, irc *irc.Connection, w http.ResponseWriter, r *http.Request) {
+func StartWS(name string, b *UserBukkit, irc *irc.Connection, w http.ResponseWriter, r *http.Request) {
 	user, ok := getUser(name)
 	if !ok {
 		r.Body.Close()
@@ -236,6 +236,6 @@ func StartWs(name string, b *UserBukkit, irc *irc.Connection, w http.ResponseWri
 	c.SendNoticeToWS(config.WelcomeMessage)
 	//c.sendMessageToIrc(config.WelcomeMessage)
 
-	go c.readPumpWs()
-	go c.writePumpWs()
+	go c.readPumpWS()
+	go c.writePumpWS()
 }
