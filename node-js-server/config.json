@@ -1,8 +1,0 @@
-{
-    "ircBotName":"KedamaOvO",
-    "ircBotPassword":"34c5649f",
-    "welcomeMessage":"",
-    "port":80,
-    "path":"/",
-    "maxMessageCountPerMinute":5
-}
