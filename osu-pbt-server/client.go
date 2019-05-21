@@ -3,7 +3,10 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"net/http"
+	"regexp"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -23,6 +26,8 @@ var (
 	heartPingFlag = []byte("\x01\x01HEARTCHECK")
 	heartPongFlag = "\x01\x02HEARTCHECKOK"
 )
+
+var rtppdMsgRegex = regexp.MustCompile(`\[RTPPD\]\[(?:http(?:s)?:\/\/osu\.ppy\.sh\/b\/(\d+)).+](?:\s(?:\+(?:\w*,?)*))?\s+\|\s\d+.\d+%\s=>\s\d+\.\d+pp\s\((\w+)\)`)
 
 const (
 	// Time allowed to write a message to the peer.
@@ -48,6 +53,8 @@ type Client struct {
 	irc    *irc.Connection
 	user   *User
 
+	recentTime time.Time
+
 	conn *websocket.Conn
 
 	sendToWs      chan []byte
@@ -72,6 +79,92 @@ func (c *Client) SendMessageToIRC(text string) {
 	c.irc.Privmsg(c.user.Username, text)
 }
 
+const timeLayoutOSU = "2006-01-02 15:04:05"
+
+//Process RTPPD Notify
+func (c *Client) processRtppdMsg(msg []byte) {
+	match := rtppdMsgRegex.FindSubmatch(msg)
+
+	if len(match) > 0 {
+		if len(match[1]) > 0 && len(match[2]) > 0 {
+			beatmapID, err := strconv.ParseInt(string(match[1]), 10, 64)
+			mode := modeStringToInt(string(match[2]))
+			if err != nil || mode == -1 {
+				goto end
+			}
+
+			b, ok := osuAPI.GetBeatmap(beatmapID)
+			if !ok {
+				goto end
+			}
+
+			if b["approved"].(string) != "1" {
+				goto end
+			}
+
+			recentOK := false
+			nowTime := time.Now()
+			for i := 0; i < 5; i++ {
+				recent, ok := osuAPI.GetUserRecent(fmt.Sprint(c.user.UID), "id", mode, 1)
+				if !ok {
+					goto end
+				}
+				t, err := time.Parse(timeLayoutOSU, recent["date"].(string))
+				if err != nil {
+					goto end
+				}
+				if c.recentTime.Before(t) && math.Abs(nowTime.Sub(t).Seconds()) < 30 {
+					c.recentTime = t
+					recentOK = true
+					break
+				}
+				time.Sleep(1 * time.Second)
+			}
+			if !recentOK {
+				goto end
+			}
+
+			//wait bancho update pp
+			time.Sleep(1 * time.Second)
+			pp, ok := osuAPI.GetUserPP(c.user.UID, mode)
+			if !ok {
+				goto end
+			}
+
+			var deltaPP float64
+			switch mode {
+			case 0:
+				deltaPP = pp - c.user.StdPP
+				c.user.StdPP = pp
+
+			case 1:
+				deltaPP = pp - c.user.TaikoPP
+				c.user.TaikoPP = pp
+
+			case 2:
+				deltaPP = pp - c.user.CtbPP
+				c.user.CtbPP = pp
+
+			case 3:
+				deltaPP = pp - c.user.ManiaPP
+				c.user.ManiaPP = pp
+			}
+
+			userManager.Update(c.user)
+
+			var buffer bytes.Buffer
+			buffer.Write(msg)
+			fmt.Fprintf(&buffer, " (%+.2fpp)", deltaPP)
+
+			msg = buffer.Bytes()
+		}
+	}
+
+end:
+	log.Infof("[WS -> IRC] %s: %s", c.user.Username, msg)
+	c.SendMessageToIRC(string(msg))
+}
+
 func (c *Client) readPumpWS() {
 	defer func() {
 		c.bukkit.remove <- c
@@ -87,7 +180,7 @@ func (c *Client) readPumpWS() {
 
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Errorf("%s : %v", c.user.Username, err)
+				log.Warningf("%s : %v", c.user.Username, err)
 			}
 			c.quitWritePump <- true
 			break
@@ -107,11 +200,15 @@ func (c *Client) readPumpWS() {
 				continue
 			}
 			atomic.AddInt32(&c.messageCount, 1)
+			message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
 
-			message := string(bytes.TrimSpace(bytes.Replace(message, newline, space, -1)))
-
-			log.Infof("[WS -> IRC] %s: %s", c.user.Username, message)
-			c.SendMessageToIRC(message)
+			//process RTPPD message
+			if bytes.HasPrefix(message, []byte("[RTPPD]")) {
+				go c.processRtppdMsg(message)
+			} else {
+				log.Infof("[WS -> IRC] %s: %s", c.user.Username, message)
+				c.SendMessageToIRC(string(message))
+			}
 		}
 	}
 }
@@ -160,12 +257,20 @@ func getUser(name string) (*User, bool) {
 	//try get user from database
 	user, ok := userManager.GetUserByUsername(name)
 	if ok {
+		if user.ApplyUserPPFromPpy() {
+			userManager.Update(user)
+		}
 		return user, true
 	}
 
 	//get uid from osu.ppy.sh
-	uid, ok := osuAPI.GetUidByUsername(name)
+	u, ok := osuAPI.GetUser(name, "string", 0)
 	if !ok {
+		return nil, false
+	}
+
+	uid, err := strconv.ParseInt(u["user_id"].(string), 10, 64)
+	if err != nil {
 		return nil, false
 	}
 
@@ -184,6 +289,8 @@ func getUser(name string) (*User, bool) {
 			FirstLoginDate: now(),
 		}
 		userManager.Add(user)
+		user.ApplyUserPPFromPpy()
+		userManager.Update(user)
 	}
 
 	return user, true

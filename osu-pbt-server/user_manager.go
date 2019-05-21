@@ -11,13 +11,19 @@ import (
 const dbFile = "users.db"
 
 const schema = `CREATE TABLE Users 
-(uid INTEGER PRIMARY KEY,
+(uid INTEGER INTEGER NOT NULL,
  username TEXT COLLATE NOCASE,
- banned INTEGER,
- banned_duration INTEGER,
- banned_date INTEGER,
- first_login_date INTEGER,
- last_login_date INTEGER);
+ banned INTEGER NOT NULL,
+ banned_duration INTEGER NOT NULL,
+ banned_date INTEGER NOT NULL,
+ first_login_date INTEGER NOT NULL,
+ last_login_date INTEGER NOT NULL,
+ std_pp REAL NOT NULL,
+ taiko_pp REAL NOT NULL,
+ ctb_pp REAL NOT NULL,
+ mania_pp REAL NOT NULL,
+ PRIMARY KEY(uid)
+);
  `
 const createIndexSchema = `CREATE INDEX username_index
  ON Users (username);`
@@ -34,14 +40,19 @@ func (um *UserManager) Add(user *User) {
 		0,
 		0,
 		$2,
-		$3)`
+		$3,
+
+		-1.0,
+		-1.0,
+		-1.0,
+		-1.0)`
 
 	if _, err := um.db.Exec(insertUserSQL, user.UID, user.Username, user.FirstLoginDate, user.FirstLoginDate); err != nil {
 		log.Errorf("Database Exception. Can't add user {uid: %d, username: %s}. (%s)", user.UID, user.Username, err)
 	}
 }
 
-func (um *UserManager) ExistByUID(uid int32) bool {
+func (um *UserManager) ExistByUID(uid int64) bool {
 	const existSQL = `SELECT COUNT(*) FROM Users 
 						WHERE uid = $0`
 	count := 0
@@ -63,10 +74,10 @@ func (um *UserManager) ExistByUsername(username string) bool {
 	return count != 0
 }
 
-func (um *UserManager) GetUIDByUsername(username string) int32 {
+func (um *UserManager) GetUIDByUsername(username string) int64 {
 	const un2uidSQL = `SELECT uid FROM Users 
 							WHERE username = $0`
-	uid := int32(0)
+	uid := int64(0)
 	if err := um.db.Get(&uid, un2uidSQL, username); err != nil {
 		log.Errorf("Database Exception. Unable to determine the user {username: %s} exists. (%s)", username, err)
 	}
@@ -84,7 +95,7 @@ func processUser(u *User) {
 	}
 }
 
-func (um *UserManager) GetUserByUID(uid int32) (*User, bool) {
+func (um *UserManager) GetUserByUID(uid int64) (*User, bool) {
 	const getSQL = `SELECT * FROM Users WHERE uid = $0`
 	user := User{}
 	if err := um.db.Get(&user, getSQL, uid); err != nil {
@@ -114,10 +125,27 @@ func (um *UserManager) Update(user *User) {
 						   banned = $1,
 						   banned_duration = $2,
 						   banned_date = $3,
-						   last_login_date = $4
+						   last_login_date = $4,
+
+						   std_pp = $5,
+						   taiko_pp = $6,
+						   ctb_pp = $7,
+						   mania_pp = $8
 					   WHERE
-						   uid = $5`
-	if _, err := um.db.Exec(updateSQL, user.Username, user.Banned, user.BannedDuration, user.BannedDate, user.LastLoginDate, user.UID); err != nil {
+						   uid = $9`
+	if _, err := um.db.Exec(updateSQL, 
+		user.Username, 
+		user.Banned, 
+		user.BannedDuration,
+		user.BannedDate, 
+		user.LastLoginDate, 
+
+		user.StdPP,
+		user.TaikoPP,
+		user.CtbPP,
+		user.ManiaPP,
+
+		user.UID); err != nil {
 		log.Errorf("Database Exception. Can't update user {uid: %d ,username: %s}. (%s)", user.UID, user.Username, err)
 	}
 }

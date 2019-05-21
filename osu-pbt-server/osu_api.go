@@ -14,36 +14,92 @@ type OsuApi struct {
 	apiKey string
 }
 
-func (api *OsuApi) GetUidByUsername(name string) (int32, bool) {
-	var url = fmt.Sprintf("%s/api/get_user?k=%s&u=%s&mode=string", APIHost, api.apiKey, name)
+func (api *OsuApi) get(apiname string, parms string) ([]byte, bool) {
+	var url = fmt.Sprintf("%s/api/%s?%s&k=%s", APIHost, apiname, parms, api.apiKey)
 
 	resp, err := http.Get(url)
 	if err != nil {
-		return 0, false
+		return nil, false
 	}
 
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
 
 	if err != nil {
-		return 0, false
+		return nil, false
+	}
+
+	return body, true
+}
+
+func (api *OsuApi) GetUser(name string, _type string, mode int) (map[string]interface{}, bool) {
+	body, ok := api.get("get_user", fmt.Sprintf("u=%s&type=%s&m=%d", name, _type, mode))
+	if !ok {
+		return nil, false
 	}
 
 	var u []map[string]interface{}
-	if err = json.Unmarshal(body, &u); err != nil {
-		return 0, false
+	if err := json.Unmarshal(body, &u); err != nil {
+		return nil, false
 	}
 
 	if len(u) < 1 {
-		return 0, false
+		return nil, false
+	}
+	return u[0], true
+}
+
+func (api *OsuApi) GetUserRecent(name string, _type string, mode int, limit int) (map[string]interface{}, bool) {
+	body, ok := api.get("get_user_recent", fmt.Sprintf("u=%s&type=%s&m=%d&limit=%d", name, _type, mode, limit))
+	if !ok {
+		return nil, false
 	}
 
-	uid, err := strconv.ParseInt(u[0]["user_id"].(string), 10, 32)
+	var u []map[string]interface{}
+	if err := json.Unmarshal(body, &u); err != nil {
+		return nil, false
+	}
+
+	if len(u) < 1 {
+		return nil, false
+	}
+	return u[0], true
+}
+
+func (api *OsuApi) GetBeatmap(id int64) (map[string]interface{}, bool) {
+	body, ok := api.get("get_beatmaps", fmt.Sprintf("b=%d", id))
+	if !ok {
+		return nil, false
+	}
+
+	var u []map[string]interface{}
+	if err := json.Unmarshal(body, &u); err != nil {
+		return nil, false
+	}
+
+	if len(u) < 1 {
+		return nil, false
+	}
+	return u[0], true
+}
+
+func (osuapi *OsuApi) GetUserPP(uid int64, mode int) (float64, bool) {
+	//get pp from osu.ppy.sh
+	u, ok := osuapi.GetUser(fmt.Sprint(uid), "id", mode)
+	if !ok {
+		return 0.0, false
+	}
+
+	if u["pp_raw"] == nil {
+		return 0.0, false
+	}
+
+	pp, err := strconv.ParseFloat(u["pp_raw"].(string), 64)
 	if err != nil {
-		return 0, false
+		return 0.0, false
 	}
 
-	return int32(uid), true
+	return pp, true
 }
 
 func NewOsuAPI(apiKey string) *OsuApi {
