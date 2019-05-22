@@ -27,7 +27,7 @@ var (
 	heartPongFlag = "\x01\x02HEARTCHECKOK"
 )
 
-var rtppdMsgRegex = regexp.MustCompile(`\[RTPPD\]\[(?:http(?:s)?:\/\/osu\.ppy\.sh\/b\/(\d+)).+](?:\s(?:\+(?:\w*,?)*))?\s+\|\s\d+.\d+%\s=>\s\d+\.\d+pp\s\((\w+)\)`)
+var rtppdMsgRegex = regexp.MustCompile(`\[RTPPD\]\[(?:http(?:s)?:\/\/osu\.ppy\.sh\/b\/(\d+)).+](?:\s(?:\+(?:\w*,?)*))?\s+\|\s\d+.\d+%\s=>\s\d+(?:\.|\,)\d+pp\s\((\w+)\)`)
 
 const (
 	// Time allowed to write a message to the peer.
@@ -53,14 +53,14 @@ type Client struct {
 	irc    *irc.Connection
 	user   *User
 
-	recentTime time.Time
-
 	conn *websocket.Conn
 
 	sendToWs      chan []byte
 	quitWritePump chan bool
 
-	messageCount int32
+	//var
+	recentTime          time.Time
+	sentIrcMessageCount int32
 }
 
 func (c *Client) SendMessageToWS(text string) {
@@ -195,11 +195,11 @@ func (c *Client) readPumpWS() {
 				continue
 			}
 
-			if c.messageCount > config.MaxMessageCountPerMinute {
+			if c.sentIrcMessageCount > config.MaxMessageCountPerMinute {
 				c.SendMessageToWS("Exceeded the limit on the number of messages sent per minute.")
 				continue
 			}
-			atomic.AddInt32(&c.messageCount, 1)
+			atomic.AddInt32(&c.sentIrcMessageCount, 1)
 			message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
 
 			//process RTPPD message
@@ -243,9 +243,9 @@ func (c *Client) writePumpWS() {
 			return
 
 		case <-msgCountClearTicker.C:
-			oldValue := c.messageCount
+			oldValue := c.sentIrcMessageCount
 			for {
-				if atomic.CompareAndSwapInt32(&c.messageCount, oldValue, 0) {
+				if atomic.CompareAndSwapInt32(&c.sentIrcMessageCount, oldValue, 0) {
 					break
 				}
 			}
