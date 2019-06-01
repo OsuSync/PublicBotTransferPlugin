@@ -83,7 +83,8 @@ func initStdinCommand(cm *CommandManager, bukkit *UserBukkit) {
 			fmt.Fprintf(o, "%s is offline.\n", args[0])
 			return
 		}
-		c.SendMessageToIRC(args[1])
+		msg := strings.Join(args[1:], " ")
+		c.SendMessageToIRC(msg)
 	}, "[username] [msg]\tSend a Message to IRC", 2)
 
 	cm.AddCallback("tosync", func(from string, args []string, o io.Writer) {
@@ -92,7 +93,8 @@ func initStdinCommand(cm *CommandManager, bukkit *UserBukkit) {
 			fmt.Fprintf(o, "%s is offline.\n", args[0])
 			return
 		}
-		c.SendNoticeToWS(args[1])
+		msg := strings.Join(args[1:], " ")
+		c.SendNoticeToWS(msg)
 	}, "[username] [msg]\tSend a Message to Sync", 2)
 
 	cm.AddCallback("kick", func(from string, args []string, o io.Writer) {
