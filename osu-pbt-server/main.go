@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hashicorp/go-version"
 	"github.com/op/go-logging"
 )
 
@@ -21,6 +24,8 @@ var (
 
 	userManager = NewUserManager() // database users
 	userBukkit  = NewBukkit()      // online users
+
+	tokenManager = NewTokenManager()
 )
 
 var (
@@ -94,6 +99,41 @@ func initIrcCommand(cm *CommandManager) {
 	cm.AddCallback("logout", func(from string, args []string, o io.Writer) {
 		userBukkit.Kick(from, fmt.Sprintf("You are taken offline by the %s.", from))
 	}, "", 0)
+
+	cm.AddCallback("assign_token", func(from string, args []string, o io.Writer) {
+		var c *Client
+		var ok bool
+		if c, ok = userBukkit.GetClient(from); !ok {
+			fmt.Fprint(o, "Your Sync is offline.")
+			return
+		}
+
+		c.status &= ^WAIT_IRC_RPL
+
+		if c.version.LessThan(VERSION) {
+			fmt.Fprintf(o, "The PublicOsuBotTransfer plugin that is lower than the %s version does not support this command.", VERSION)
+			return
+		}
+
+		if tokenManager.TokenRequested(c) {
+			fmt.Fprint(o, "You have already assigned a token.")
+			return
+		}
+
+		token := tokenManager.RequestToken(c)
+		tokenBytes := []byte(token)
+		buf := &bytes.Buffer{}
+		binary.Write(buf, binary.LittleEndian, struct {
+			cmd uint16
+			len int32
+		}{
+			cmd: RPL_TOKEN,
+			len: int32(len(tokenBytes)),
+		})
+		log.Infof("[Generate Token] %s: %s", c.user.Username, token)
+		c.SendBinaryToWS(append(buf.Bytes(), tokenBytes...))
+
+	}, "", 0)
 }
 
 func initServer() {
@@ -143,16 +183,25 @@ func main() {
 	http.HandleFunc(config.Path, func(rw http.ResponseWriter, req *http.Request) {
 		nameCookie, err := req.Cookie("transfer_target_name")
 		if err != nil {
-			rw.WriteHeader(http.StatusForbidden)
-			req.Body.Close()
+			rw.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
+		var versionStr string
+		versionCookie, err := req.Cookie("version")
+		if err != nil {
+			versionStr = "1.0.0"
+		} else {
+			versionStr = versionCookie.Value
+		}
+
+		ver := version.Must(version.NewVersion(versionStr))
+
 		name := strings.Replace(nameCookie.Value, " ", "_", -1)
-		StartWS(name, rw, req)
+		StartWS(name, rw, req, ver)
 	})
 
-	http.HandleFunc("/is_online", func(rw http.ResponseWriter, req *http.Request) {
+	http.HandleFunc("/api/is_online", func(rw http.ResponseWriter, req *http.Request) {
 		onlineJSON := struct {
 			IRCOnline  bool `json:"ircOnline"`
 			SyncOnline bool `json:"syncOnline"`
@@ -178,6 +227,30 @@ func main() {
 		}
 
 		json, _ := json.Marshal(onlineJSON)
+		rw.Write(json)
+	})
+
+	http.HandleFunc("/api/token_valid", func(rw http.ResponseWriter, req *http.Request) {
+		validJSON := struct {
+			Valid bool `json:"valid"`
+		}{
+			Valid: false,
+		}
+
+		query := req.URL.Query()
+		if name, ok := query["u"]; ok && len(name) > 0 {
+			if k, ok := query["k"]; ok && len(k) > 0 {
+				if c, ok := userBukkit.GetClient(name[0]); ok {
+					if token, ok := tokenManager.Token(c); ok {
+						if k[0] == token {
+							validJSON.Valid = true
+						}
+					}
+				}
+			}
+		}
+
+		json, _ := json.Marshal(validJSON)
 		rw.Write(json)
 	})
 

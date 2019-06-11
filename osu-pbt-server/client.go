@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"math"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/hashicorp/go-version"
 )
 
 var (
@@ -47,19 +49,33 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
+// Client Status
+// bit flags
+const (
+	CONNECTED    uint32 = 1
+	WAIT_IRC_RPL uint32 = 2
+)
+
 // Client is a connected user instance
 type Client struct {
-	bukkit *UserBukkit
-	user   *User
+	user    *User
+	version *version.Version
 
 	conn *websocket.Conn
 
-	sendToWs      chan []byte
-	quitWritePump chan bool
+	sendToWs       chan []byte
+	sendBinaryToWS chan []byte
+	quitWritePump  chan bool
 
 	//var
 	recentTime          time.Time
 	sentIrcMessageCount int32
+
+	status uint32
+}
+
+func (c *Client) SendBinaryToWS(bin []byte) {
+	c.sendBinaryToWS <- bin
 }
 
 func (c *Client) SendMessageToWS(text string) {
@@ -166,7 +182,10 @@ end:
 
 func (c *Client) readPumpWS() {
 	defer func() {
-		c.bukkit.remove <- c
+		userBukkit.remove <- c
+		if tokenManager.TokenRequested(c) {
+			tokenManager.RemoveToken(c)
+		}
 		c.conn.Close()
 	}()
 
@@ -213,6 +232,21 @@ func (c *Client) readPumpWS() {
 				log.Infof("[WS -> IRC] %s: %s", c.user.Username, message)
 				c.SendMessageToIRC(string(message))
 			}
+		case websocket.BinaryMessage:
+			if len(message) >= 2 {
+				if (c.status & WAIT_IRC_RPL) > 0 {
+					continue
+				}
+
+				cmd := binary.LittleEndian.Uint16(message)
+				if cmd == REQ_TOKEN {
+					c.SendMessageToIRC(`Sync wants to request other services that the Token uses to access the Bot. Reply "!assign_token" to generate and send a token to Sync.`)
+					c.status |= WAIT_IRC_RPL
+					time.AfterFunc(60*time.Second, func() {
+						c.status &= ^WAIT_IRC_RPL
+					})
+				}
+			}
 		}
 	}
 }
@@ -236,6 +270,15 @@ func (c *Client) writePumpWS() {
 			}
 
 			c.conn.WriteMessage(websocket.TextMessage, msgBytes)
+
+		case binBytes, ok := <-c.sendBinaryToWS:
+			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if !ok {
+				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				return
+			}
+
+			c.conn.WriteMessage(websocket.BinaryMessage, binBytes)
 
 		case <-pingTicker.C:
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
@@ -300,7 +343,7 @@ func getUser(name string) (*User, bool) {
 	return user, true
 }
 
-func StartWS(name string, w http.ResponseWriter, r *http.Request) {
+func StartWS(name string, w http.ResponseWriter, r *http.Request, ver *version.Version) {
 	user, ok := getUser(name)
 	if !ok {
 		r.Body.Close()
@@ -334,13 +377,16 @@ func StartWS(name string, w http.ResponseWriter, r *http.Request) {
 	}
 
 	c := &Client{
-		user:          user,
-		conn:          conn,
-		sendToWs:      make(chan []byte, 64),
-		quitWritePump: make(chan bool),
+		version:        ver,
+		user:           user,
+		conn:           conn,
+		sendToWs:       make(chan []byte, 64),
+		sendBinaryToWS: make(chan []byte, 64),
+		quitWritePump:  make(chan bool),
+		status:         CONNECTED,
 	}
 
-	c.bukkit.add <- c
+	userBukkit.add <- c
 
 	c.SendNoticeToWS(config.WelcomeMessage)
 	c.SendNoticeToWS(fmt.Sprintf("You can send %d messages per minute", config.MaxMessageCountPerMinute))
