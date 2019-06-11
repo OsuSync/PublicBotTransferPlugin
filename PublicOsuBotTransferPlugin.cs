@@ -18,10 +18,12 @@ namespace PublicOsuBotTransfer
     {
         private PluginConfigurationManager config_manager;
         OsuBotTransferClient client = new OsuBotTransferClient();
+        public const string VERSION = "1.3.0";
+        public string Token => client.Token;
 
         string temp_user_name;
 
-        public PublicOsuBotTransferPlugin() : base("PublicOsuBotTransferPlugin", "MikiraSora")
+        public PublicOsuBotTransferPlugin() : base("PublicOsuBotTransferPlugin", "MikiraSora && KedamaOvO")
         {
             config_manager = new PluginConfigurationManager(this);
             config_manager.AddItem(client);

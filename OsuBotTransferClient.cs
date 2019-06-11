@@ -12,12 +12,36 @@ using PublicOsuBotTransfer.Attribute;
 using Sync.Tools.ConfigurationAttribute;
 using WebSocketSharp;
 using Sync.Plugins;
+using System.IO;
+using System.Runtime.InteropServices;
 
 namespace PublicOsuBotTransfer
 {
     public class OsuBotTransferClient : DefaultClient, IConfigurable
     {
         private const string CONST_SYNC_NOTICE_HEADER = "\x01\x03\x01";
+        private const UInt16 REQ_TOKEN = 1;
+        private const UInt16 RPL_TOKEN = 2;
+
+        private string _token = "";
+        private bool _token_requsted = false;
+
+        public string Token
+        {
+            private set
+            {
+                _token = value;
+            }
+            get
+            {
+                if (!_token_requsted)
+                {
+                    RequestToken();
+                    _token_requsted = true;
+                }
+                return _token;
+            }
+        }
 
         [Bool]
         public static ConfigurationElement AutoReconnect { get; set; } = "False";
@@ -87,6 +111,7 @@ namespace PublicOsuBotTransfer
             web_socket.OnOpen += Web_socket_OnConnected;
 
             web_socket.SetCookie(new WebSocketSharp.Net.Cookie("transfer_target_name", Target_User_Name));
+            web_socket.SetCookie(new WebSocketSharp.Net.Cookie("version", PublicOsuBotTransferPlugin.VERSION));
 
             NickName = Target_User_Name;
 
@@ -101,29 +126,74 @@ namespace PublicOsuBotTransfer
             is_connected = true;
         }
 
+        struct WsCommand
+        {
+            public UInt16 Command;
+        }
+
+        byte[] getBytes<T>(T str)where T:struct
+        {
+            int size = Marshal.SizeOf(str);
+            byte[] arr = new byte[size];
+
+            IntPtr ptr = Marshal.AllocHGlobal(size);
+            Marshal.StructureToPtr(str, ptr, true);
+            Marshal.Copy(ptr, arr, 0, size);
+            Marshal.FreeHGlobal(ptr);
+            return arr;
+        }
+
+        void RequestToken()
+        {
+            WsCommand cmd = new WsCommand()
+            {
+                Command = REQ_TOKEN
+            };
+            web_socket.Send(getBytes(cmd));
+        }
+
         private void Web_socket_OnMessage(object sender, MessageEventArgs e)
         {
             string nick = Target_User_Name;
-            string rawmsg = e.Data;
 
+            if (e.IsText)
+            {
+                string rawmsg = e.Data;
 
-            if (e.Data.StartsWith(CONST_SYNC_NOTICE_HEADER))
-            {
-                string notice = e.Data.Substring(CONST_SYNC_NOTICE_HEADER.Length);
-                IO.CurrentIO.WriteColor($"[OsuBotTransferClient][Notice]{notice}", ConsoleColor.Cyan);
-            }
-            else
-            {
-                IO.CurrentIO.WriteColor($"[OsuBotTransferClient]{e.Data}", ConsoleColor.Cyan);
-                Task.Run(() => Sync.SyncHost.Instance.Messages.RaiseMessage<ISourceClient>(new DanmakuMessage()
+                if (e.Data.StartsWith(CONST_SYNC_NOTICE_HEADER))
                 {
-                    User = nick,
-                    Message = rawmsg
-                }));
+                    string notice = e.Data.Substring(CONST_SYNC_NOTICE_HEADER.Length);
+                    IO.CurrentIO.WriteColor($"[OsuBotTransferClient][Notice]{notice}", ConsoleColor.Cyan);
+                }
+                else
+                {
+                    IO.CurrentIO.WriteColor($"[OsuBotTransferClient]{e.Data}", ConsoleColor.Cyan);
+                    Task.Run(() => Sync.SyncHost.Instance.Messages.RaiseMessage<ISourceClient>(new DanmakuMessage()
+                    {
+                        User = nick,
+                        Message = rawmsg
+                    }));
+                }
+            }
+            else if (e.IsBinary)
+            {
+                var data = e.RawData;
+                using (var ms = new MemoryStream(data))
+                using (var br = new BinaryReader(ms))
+                {
+                    if(br.ReadUInt16() == RPL_TOKEN)
+                    {
+                        int len = br.ReadInt32();
+                        byte[] token_bytes = br.ReadBytes(len);
+                        var token = Encoding.UTF8.GetString(token_bytes);
+                        Token = token;
+                        Sync.Tools.IO.DefaultIO.WriteColor($"[OsuBotTransferClient] Get Token: {token}", ConsoleColor.Cyan);
+                    }
+                }
             }
         }
 
-        private void Web_socket_OnError(object sender, ErrorEventArgs e)
+        private void Web_socket_OnError(object sender, WebSocketSharp.ErrorEventArgs e)
         {
             IO.CurrentIO.WriteColor($"[OsuBotTransferClient]{e.Message}", ConsoleColor.Red);
             is_connected = false;
