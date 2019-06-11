@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	irc "github.com/thoj/go-ircevent"
 )
 
 var (
@@ -48,9 +47,9 @@ var upgrader = websocket.Upgrader{
 	WriteBufferSize: 1024,
 }
 
+// Client is a connected user instance
 type Client struct {
 	bukkit *UserBukkit
-	irc    *irc.Connection
 	user   *User
 
 	conn *websocket.Conn
@@ -76,7 +75,7 @@ func (c *Client) SendNoticeToWS(text string) {
 }
 
 func (c *Client) SendMessageToIRC(text string) {
-	c.irc.Privmsg(c.user.Username, text)
+	ircManager.SendMessage(c.user.Username, text)
 }
 
 const timeLayoutOSU = "2006-01-02 15:04:05"
@@ -202,6 +201,11 @@ func (c *Client) readPumpWS() {
 			atomic.AddInt32(&c.sentIrcMessageCount, 1)
 			message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
 
+			if !ircManager.IsOnline(c.user.Username) {
+				log.Infof("[WS -> IRC(offline)] %s: %s", c.user.Username, message)
+				continue
+			}
+
 			//process RTPPD message
 			if bytes.HasPrefix(message, []byte("[RTPPD]")) {
 				go c.processRtppdMsg(message)
@@ -296,7 +300,7 @@ func getUser(name string) (*User, bool) {
 	return user, true
 }
 
-func StartWS(name string, b *UserBukkit, irc *irc.Connection, w http.ResponseWriter, r *http.Request) {
+func StartWS(name string, w http.ResponseWriter, r *http.Request) {
 	user, ok := getUser(name)
 	if !ok {
 		r.Body.Close()
@@ -323,16 +327,14 @@ func StartWS(name string, b *UserBukkit, irc *irc.Connection, w http.ResponseWri
 		userManager.Update(user)
 	}
 
-	if b.IsOnline(name) {
+	if userBukkit.IsOnline(name) {
 		reason := fmt.Sprintf(`The TargetUsername is connected! Send "!logout" logout the user to %s`, config.Username)
 		conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, reason))
 		conn.Close()
 	}
 
 	c := &Client{
-		bukkit:        b,
 		user:          user,
-		irc:           irc,
 		conn:          conn,
 		sendToWs:      make(chan []byte, 64),
 		quitWritePump: make(chan bool),

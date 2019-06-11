@@ -10,11 +10,12 @@ import (
 
 const APIHost = "https://osu.ppy.sh"
 
-type OsuApi struct {
+// OsuAPI is Osu Web Api, https://github.com/ppy/osu-api/wiki
+type OsuAPI struct {
 	apiKey string
 }
 
-func (api *OsuApi) get(apiname string, parms string) ([]byte, bool) {
+func (api *OsuAPI) get(apiname string, parms string) ([]byte, bool) {
 	var url = fmt.Sprintf("%s/api/%s?%s&k=%s", APIHost, apiname, parms, api.apiKey)
 
 	resp, err := http.Get(url)
@@ -32,7 +33,7 @@ func (api *OsuApi) get(apiname string, parms string) ([]byte, bool) {
 	return body, true
 }
 
-func (api *OsuApi) GetUser(name string, _type string, mode int) (map[string]interface{}, bool) {
+func (api *OsuAPI) GetUser(name string, _type string, mode int) (map[string]interface{}, bool) {
 	body, ok := api.get("get_user", fmt.Sprintf("u=%s&type=%s&m=%d", name, _type, mode))
 	if !ok {
 		return nil, false
@@ -49,7 +50,7 @@ func (api *OsuApi) GetUser(name string, _type string, mode int) (map[string]inte
 	return u[0], true
 }
 
-func (api *OsuApi) GetUserRecent(name string, _type string, mode int, limit int) (map[string]interface{}, bool) {
+func (api *OsuAPI) GetUserRecent(name string, _type string, mode int, limit int) (map[string]interface{}, bool) {
 	body, ok := api.get("get_user_recent", fmt.Sprintf("u=%s&type=%s&m=%d&limit=%d", name, _type, mode, limit))
 	if !ok {
 		return nil, false
@@ -66,7 +67,7 @@ func (api *OsuApi) GetUserRecent(name string, _type string, mode int, limit int)
 	return u[0], true
 }
 
-func (api *OsuApi) GetBeatmap(id int64) (map[string]interface{}, bool) {
+func (api *OsuAPI) GetBeatmap(id int64) (map[string]interface{}, bool) {
 	body, ok := api.get("get_beatmaps", fmt.Sprintf("b=%d", id))
 	if !ok {
 		return nil, false
@@ -83,9 +84,9 @@ func (api *OsuApi) GetBeatmap(id int64) (map[string]interface{}, bool) {
 	return u[0], true
 }
 
-func (osuapi *OsuApi) GetUserPP(uid int64, mode int) (float64, bool) {
+func (OsuAPI *OsuAPI) GetUserPP(uid int64, mode int) (float64, bool) {
 	//get pp from osu.ppy.sh
-	u, ok := osuapi.GetUser(fmt.Sprint(uid), "id", mode)
+	u, ok := OsuAPI.GetUser(fmt.Sprint(uid), "id", mode)
 	if !ok {
 		return 0.0, false
 	}
@@ -102,8 +103,8 @@ func (osuapi *OsuApi) GetUserPP(uid int64, mode int) (float64, bool) {
 	return pp, true
 }
 
-func NewOsuAPI(apiKey string) *OsuApi {
-	return &OsuApi{
+func NewOsuAPI(apiKey string) *OsuAPI {
+	return &OsuAPI{
 		apiKey: apiKey,
 	}
 }

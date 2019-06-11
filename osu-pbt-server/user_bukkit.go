@@ -2,6 +2,7 @@ package main
 
 import "github.com/gorilla/websocket"
 
+// UserBukkit is all online user collection.
 type UserBukkit struct {
 	bukkit map[string]*Client
 
