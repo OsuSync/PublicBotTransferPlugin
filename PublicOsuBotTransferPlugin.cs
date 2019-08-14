@@ -115,7 +115,7 @@ namespace PublicOsuBotTransfer
             Plugin guiPlugin = getHoster().EnumPluings().FirstOrDefault(p => p.Name == "ConfigGUI");
             if (guiPlugin != null)
             {
-                GuiRegisterHelper.RegisterCustomItem(guiPlugin);
+                GuiRegisterHelper.RegisterCustomItem(guiPlugin, client);
             }
         }
 

@@ -11,10 +11,11 @@ namespace PublicOsuBotTransfer.Gui
 {
     static class GuiRegisterHelper
     {
-        public static void RegisterCustomItem(Plugin plugin)
+        public static void RegisterCustomItem(Plugin plugin, OsuBotTransferClient client)
         {
             var gui = plugin as ConfigGuiPlugin;
             gui.ItemFactory.RegisterItemCreator<UsernameAttribute>(new UsernameCreator());
+            gui.ItemFactory.RegisterItemCreator<ServerUrlAttribute>(new SerrverUrlCreator(client));
         }
     }
 }
