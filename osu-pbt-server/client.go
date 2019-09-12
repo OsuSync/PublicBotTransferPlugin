@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -26,9 +27,12 @@ var (
 	//compatibility
 	heartPingFlag = []byte("\x01\x01HEARTCHECK")
 	heartPongFlag = "\x01\x02HEARTCHECKOK"
+
+	//Unranked Mod
+	unrankedMods = [...]string{"RL","Auto","AP","V2","CN","Co-op","RD","1K","2K","3K","4K","5K","6K","7K","8K","9K"}
 )
 
-var rtppdMsgRegex = regexp.MustCompile(`\[RTPPD\]\[(?:http(?:s)?:\/\/osu\.ppy\.sh\/b\/(\d+)).+](?:\s(?:\+(?:\w*,?)*))?\s+\|\s\d+.\d+%\s=>\s\d+(?:\.|\,)\d+pp\s\((\w+)\)`)
+var rtppdMsgRegex = regexp.MustCompile(`\[RTPPD\]\[(?:http(?:s)?:\/\/osu\.ppy\.sh\/b\/(\d+)).+](?:\s(\+(?:\w*,?)*))?\s+\|\s\d+.\d+%\s=>\s\d+(?:\.|\,)\d+pp\s\((\w+)\)`)
 
 const (
 	// Time allowed to write a message to the peer.
@@ -100,21 +104,33 @@ const timeLayoutOSU = "2006-01-02 15:04:05"
 func (c *Client) processRtppdMsg(msg []byte) {
 	match := rtppdMsgRegex.FindSubmatch(msg)
 
+	defer func(){
+		log.Infof("[WS -> IRC] %s: %s", c.user.Username, msg)
+		c.SendMessageToIRC(string(msg))
+	}()
+
 	if len(match) > 0 {
 		if len(match[1]) > 0 && len(match[2]) > 0 {
 			beatmapID, err := strconv.ParseInt(string(match[1]), 10, 64)
-			mode := modeStringToInt(string(match[2]))
+			mods := string(match[2])
+			mode := modeStringToInt(string(match[3]))
 			if err != nil || mode == -1 {
-				goto end
+				return
+			}
+
+			for _,mod := range unrankedMods{
+				if strings.Contains(mods,mod){
+					return
+				}
 			}
 
 			b, ok := osuAPI.GetBeatmap(beatmapID)
 			if !ok {
-				goto end
+				return
 			}
 
 			if b["approved"].(string) != "1" {
-				goto end
+				return
 			}
 
 			recentOK := false
@@ -122,11 +138,11 @@ func (c *Client) processRtppdMsg(msg []byte) {
 			for i := 0; i < 5; i++ {
 				recent, ok := osuAPI.GetUserRecent(fmt.Sprint(c.user.UID), "id", mode, 1)
 				if !ok {
-					goto end
+					return
 				}
 				t, err := time.Parse(timeLayoutOSU, recent["date"].(string))
 				if err != nil {
-					goto end
+					return
 				}
 				if c.recentTime.Before(t) && math.Abs(nowTime.Sub(t).Seconds()) < 30 {
 					c.recentTime = t
@@ -136,14 +152,14 @@ func (c *Client) processRtppdMsg(msg []byte) {
 				time.Sleep(1 * time.Second)
 			}
 			if !recentOK {
-				goto end
+				return
 			}
 
 			//wait bancho update pp
 			time.Sleep(1 * time.Second)
 			pp, ok := osuAPI.GetUserPP(c.user.UID, mode)
 			if !ok {
-				goto end
+				return
 			}
 
 			var deltaPP float64
@@ -174,10 +190,6 @@ func (c *Client) processRtppdMsg(msg []byte) {
 			msg = buffer.Bytes()
 		}
 	}
-
-end:
-	log.Infof("[WS -> IRC] %s: %s", c.user.Username, msg)
-	c.SendMessageToIRC(string(msg))
 }
 
 func (c *Client) readPumpWS() {

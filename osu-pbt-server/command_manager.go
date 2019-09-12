@@ -1,8 +1,8 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
+	"golang.org/x/crypto/ssh/terminal"
 	"io"
 	"os"
 	"strings"
@@ -23,6 +23,7 @@ type Command struct {
 type CommandManager struct {
 	cmds        map[string]RegisterCommand
 	pushCommand chan Command
+	oldTerminalState 	*terminal.State
 }
 
 func (cm *CommandManager) AddCallback(key string, callback func(string, []string, io.Writer), detail string, argsCount int) {
@@ -37,39 +38,43 @@ func (cm *CommandManager) PushCommand(from string, text string) {
 	cm.PushCommandEx(from, text, os.Stdout)
 }
 
-func (cm *CommandManager) PushCommandEx(from string, text string, o io.Writer) {
-	cm.pushCommand <- Command{
-		From:    from,
-		Command: text,
-		Output:  o,
+func (cm *CommandManager) PushCommandEx(from string, cmd string, o io.Writer) {
+	args := strings.Split(cmd, " ")
+	if len(args) < 0 {
+		return
+	}
+
+	if rcmd, exist := cm.cmds[args[0]]; exist {
+		if len(args)-1 < rcmd.argsCount {
+			fmt.Fprintf(o, "Not enough parameters. (%d/%d)\n\r", len(args)-1, rcmd.argsCount)
+			return
+		}
+		rcmd.callback(from, args[1:], o)
+	} else {
+		fmt.Fprintf(o, "Command no exist!\n\r")
 	}
 }
 
 func (cm *CommandManager) ReadStdinPump() {
-	scanner := bufio.NewScanner(os.Stdin)
-	for scanner.Scan() {
-		cm.PushCommand("Server", scanner.Text())
+	cm.oldTerminalState,_ = terminal.MakeRaw(int(os.Stdin.Fd()))
+
+
+	inTerm := terminal.NewTerminal(os.Stdin,">")
+
+	//reader := bufio.NewReader(os.Stdin)
+	for{
+		line,err := inTerm.ReadLine()
+		strings.Trim(line,"\n")
+		if err != nil{
+			fmt.Printf("Can't read stdin.\n\r")
+			continue
+		}
+		cm.PushCommand("Server", line)
 	}
 }
 
-func (cm *CommandManager) Run() {
-	for {
-		cmd := <-cm.pushCommand
-		args := strings.Split(cmd.Command, " ")
-		if len(args) < 0 {
-			continue
-		}
-
-		if rcmd, exist := cm.cmds[args[0]]; exist {
-			if len(args)-1 < rcmd.argsCount {
-				fmt.Fprintf(cmd.Output, "Not enough parameters. (%d/%d)\n", len(args)-1, rcmd.argsCount)
-				continue
-			}
-			rcmd.callback(cmd.From, args[1:], cmd.Output)
-		} else {
-			fmt.Fprintln(cmd.Output, "Command no exist!")
-		}
-	}
+func (cm *CommandManager) QuitStdinPump(){
+	terminal.Restore(int(os.Stdin.Fd()),cm.oldTerminalState)
 }
 
 func NewCommandManager(addHelp bool) *CommandManager {
@@ -81,7 +86,7 @@ func NewCommandManager(addHelp bool) *CommandManager {
 	if addHelp {
 		cm.AddCallback("help", func(from string, args []string, o io.Writer) {
 			for k, v := range cm.cmds {
-				fmt.Fprintf(o, "%s\t%s\n", k, v.detail)
+				fmt.Fprintf(o, "%s\t%s\n\r", k, v.detail)
 			}
 		}, "\t\t\tShow help", 0)
 	}

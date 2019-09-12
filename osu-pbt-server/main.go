@@ -31,7 +31,7 @@ var (
 var (
 	log    = logging.MustGetLogger("pbt-go")
 	format = logging.MustStringFormatter(
-		`%{color}%{time:15:04:05.000} %{shortfunc} [%{level:.4s}] <%{id:03x}>%{color:reset} %{message}`,
+		"\r%{color}%{time:15:04:05.000} %{shortfunc} [%{level:.4s}] <%{id:03x}>%{color:reset} %{message}\r",
 	)
 )
 
@@ -40,13 +40,13 @@ func initStdinCommand(cm *CommandManager) {
 		for _, v := range userBukkit.bukkit {
 			fmt.Fprintf(o, "%s\t", v.user.Username)
 		}
-		fmt.Fprintf(o, "\nCount: %d\n\n", len(userBukkit.bukkit))
+		fmt.Fprintf(o, "\r\n\033[32mCount: %d\033[37m\n\n\r", len(userBukkit.bukkit))
 	}, "\t\t\tAll online user", 0)
 
 	cm.AddCallback("toirc", func(from string, args []string, o io.Writer) {
 		c, ok := userBukkit.GetClient(args[0])
 		if !ok {
-			fmt.Fprintf(o, "%s is offline.\n", args[0])
+			fmt.Fprintf(o, "%s is offline.\n\r", args[0])
 			return
 		}
 		msg := strings.Join(args[1:], " ")
@@ -56,7 +56,7 @@ func initStdinCommand(cm *CommandManager) {
 	cm.AddCallback("tosync", func(from string, args []string, o io.Writer) {
 		c, ok := userBukkit.GetClient(args[0])
 		if !ok {
-			fmt.Fprintf(o, "%s is offline.\n", args[0])
+			fmt.Fprintf(o, "%s is offline.\n\r", args[0])
 			return
 		}
 		msg := strings.Join(args[1:], " ")
@@ -71,12 +71,12 @@ func initStdinCommand(cm *CommandManager) {
 	cm.AddCallback("ban", func(from string, args []string, o io.Writer) {
 		u, ok := userManager.GetUserByUsername(args[0])
 		if !ok {
-			fmt.Fprintf(o, "User(%s) does not exist.\n", args[0])
+			fmt.Fprintf(o, "User(%s) does not exist.\n\r", args[0])
 			return
 		}
 		minutes, err := strconv.ParseInt(args[1], 10, 64)
 		if err != nil {
-			fmt.Fprintf(o, "minutes format is incorrect.\n")
+			fmt.Fprintf(o, "minutes format is incorrect.\n\r")
 			return
 		}
 		u.Ban(time.Duration(minutes) * time.Minute)
@@ -87,12 +87,17 @@ func initStdinCommand(cm *CommandManager) {
 	cm.AddCallback("unban", func(from string, args []string, o io.Writer) {
 		u, ok := userManager.GetUserByUsername(args[0])
 		if !ok {
-			fmt.Fprintf(o, "User(%s) does not exist.\n", args[0])
+			fmt.Fprintf(o, "User(%s) does not exist.\n\r", args[0])
 			return
 		}
 		u.Unban()
 		userManager.Update(u)
 	}, "[username]\t\tUnban a user", 1)
+	
+	cm.AddCallback("quit", func(from string, args []string, o io.Writer) {
+		cm.QuitStdinPump()
+		os.Exit(0)
+	},"\t\t\tQuit server",0)
 }
 
 func initIrcCommand(cm *CommandManager) {
@@ -167,14 +172,14 @@ func initServer() {
 	logging.SetBackend(fileBackendFormatter, stdoutBackendFormatter)
 
 	stdinCmd := NewCommandManager(true)
-	ircCmd := NewCommandManager(false)
-	ircManager = NewIrc(ircCmd)
 	initStdinCommand(stdinCmd)
-	initIrcCommand(ircCmd)
-	go userBukkit.Run()
 	go stdinCmd.ReadStdinPump()
-	go stdinCmd.Run()
-	go ircCmd.Run()
+
+	ircCmd := NewCommandManager(false)
+	initIrcCommand(ircCmd)
+
+	ircManager = NewIrc(ircCmd)
+	go userBukkit.Run()
 }
 
 func main() {
