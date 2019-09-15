@@ -20,6 +20,7 @@ namespace PublicOsuBotTransfer
         OsuBotTransferClient client = new OsuBotTransferClient();
         public const string VERSION = "1.3.0";
         public string Token => client.Token;
+        public string Username => OsuBotTransferClient.Target_User_Name;
 
         string temp_user_name;
 

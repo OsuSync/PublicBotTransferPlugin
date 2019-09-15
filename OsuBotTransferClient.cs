@@ -38,7 +38,7 @@ namespace PublicOsuBotTransfer
     public class OsuBotTransferClient : DefaultClient, IConfigurable
     {
         Queue<Message> messageBuffer = new Queue<Message>();
-        private Timer messgaeBufferTimer;
+        private Task messgaeBufferTimer;
         private bool messgaeBufferTimerQuit = false;
 
         private const string CONST_SYNC_NOTICE_HEADER = "\x01\x03\x01";
@@ -81,7 +81,7 @@ namespace PublicOsuBotTransfer
 
         public OsuBotTransferClient() : base("MikiraSora", "OsuBotTransferClient")
         {
-            messgaeBufferTimer = new Timer(state=>
+            messgaeBufferTimer = Task.Run(()=>
             {
                 while (!messgaeBufferTimerQuit)
                 {
@@ -104,6 +104,7 @@ namespace PublicOsuBotTransfer
                     Thread.Sleep(1000);
                 }
             });
+            
         }
 
         public void onConfigurationLoad()
@@ -309,6 +310,7 @@ namespace PublicOsuBotTransfer
             }
 
             SendCommand(cmd);
+            //SendMessage(new IRCMessage(Target_User_Name.ToString(), "[OsuBotTransferClient]Sync wants to request other services that the Token uses to access the Bot. Reply \"!assign_token\" to generate and send a token to Sync."));
         }
         #endregion
     }
