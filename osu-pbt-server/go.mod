@@ -5,7 +5,7 @@ go 1.12
 require (
 	github.com/deckarep/golang-set v1.7.1
 	github.com/google/uuid v1.1.1 // indirect
-	github.com/gorilla/websocket v1.4.0
+	github.com/gorilla/websocket v1.4.1
 	github.com/hashicorp/go-version v1.2.0
 	github.com/jmoiron/sqlx v1.2.0
 	github.com/lithammer/shortuuid v3.0.0+incompatible
